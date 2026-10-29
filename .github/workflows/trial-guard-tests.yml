@@ -1,0 +1,15 @@
+name: Trial guard contract tests
+on:
+  push:
+    branches: [main, "research/**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Stage-0 rollback unit tests
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/trial_guard_tests.cpp -o trial_guard_tests
+      - name: Run Stage-0 rollback unit tests
+        run: ./trial_guard_tests
