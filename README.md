@@ -70,3 +70,7 @@ The watchdog prototype now launches an independent supervisor before any mock mu
 ## Stage 1i — build provenance and release gate (not a release)
 
 The Windows CI suite now records an **UNTRUSTED** unsigned diagnostic artifact and its SHA-256/source commit, and verifies that the proposed release gate refuses unsigned, unapproved and tampered Windows binaries. `release/watchdog-approval.json` is blocked. No signing keys, signed native watchdog, installer or deployment exists. [Release trust and remaining gates](docs/RELEASE_TRUST.md). Active taskbar changes remain disabled.
+
+## Stage 1j — native mock watchdog
+
+A Windows-native C++17 watchdog now supervises, expires and reverses an **isolated TEMP-file mock trial** without Python being the watcher. Windows CI tests expiry, deliberate kill and manual reconciliation, conflict preservation and corrupted journals; Linux tests the portable recovery parser. It is not the signed production watchdog, has no boot-time recovery, and cannot modify the Windows taskbar or Windhawk settings. See [native watchdog limits](docs/NATIVE_WATCHDOG.md).
