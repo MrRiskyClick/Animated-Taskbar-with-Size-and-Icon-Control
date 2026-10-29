@@ -64,3 +64,13 @@ As of Stage 1d, the mock controller sends a per-trial random credential to the w
 An independent standalone Windows IPC probe implements a session-local, same-user named-pipe exchange with OS-reported PID/session/SID checks, HMAC-SHA256 mutual challenge/response and nonce-based replay resistance. This is a feasibility test, **not** a Windhawk/Explorer authenticated channel. The actual mod is read-only, still has no handshake or taskbar-changing authority, and no Windows-specific restoration has been verified.
 
 See [native probe threat model](../native/README.md). Required next: bounded overlapped I/O; authenticated binding to a verified watchdog executable/session; protected per-trial secret bootstrap; durable Windows rollback journal; and failure-injection before enabling any real taskbar changes.
+
+## Stage 1g — read-only IPC observation inside the Windhawk source
+
+The Windhawk diagnostic source has three **optional** settings: diagnosticPipeSuffix, diagnosticPeerPid and diagnosticPeerExecutable. All are empty/zero by default. When explicitly configured together, the background diagnostic thread performs **one** short Windows named-pipe probe using the same C++ client as the Stage 1g standalone test host. The probe checks local server PID, same user SID, same Windows logon session, an exact executable path, and expects a fixed 8-byte diagnostic acknowledgement. It uses a 3-second shared transport deadline.
+
+**This is deliberate observation, not authentication.** The ack is public, a same-user attacker could impersonate or replace a writable executable, and the metadata settings are not secret. The actual Windhawk mod receives no trial credential and cannot enable taskbar mutations based on this probe. The existing lease.v1 file is also only a read-only observation.
+
+Windows CI builds and runs the standalone client/server, then syntax-checks the bundled single-file mod using a minimal Windhawk API declaration shim. Only an actual Windhawk toolchain/build and controlled Explorer testing can validate real mod runtime behavior; those steps have not been performed. No automatic installs or edits to the user's Windhawk themes occur.
+
+**Next required gate:** design an explicit trust anchor for the watchdog binary and secure per-trial bootstrap between an authorized launcher and an injected Explorer process. Do not send secrets via Windhawk settings or use a user-writable pipe name as proof of identity. Follow with native watchdog packaging and per-property rollback before any active shell changes.
