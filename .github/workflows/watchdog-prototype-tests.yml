@@ -1,8 +1,16 @@
 name: Watchdog prototype tests
+# Feature/research branches are tested through their pull requests.
+# Direct pushes to main still receive tests. Avoid running both events per edit.
 on:
   push:
-    branches: [main, "research/**", "feature/**"]
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# Only the latest revision of a PR needs to complete this workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   mock-only-watchdog:
