@@ -209,7 +209,7 @@ int Serve(const std::wstring& pipeName, bool stallAfterHello = false) {
 }
 
 int Client(const std::wstring& pipeName, bool captureProof, bool replayProof,
-           DWORD expectedServerPid) {
+           DWORD expectedServerPid, bool stallAfterConnect = false) {
     Secret material{};
     if (!ReadSecret(material)) return 2;
     Secret replayTag{};
@@ -218,6 +218,7 @@ int Client(const std::wstring& pipeName, bool captureProof, bool replayProof,
     Handle pipe(atb_transport::OpenClient(pipeName, deadline));
     if (!pipe.valid()) return 2;
     if (!VerifyServerIdentity(pipe.get(), expectedServerPid)) return 3;
+    if (stallAfterConnect) { Sleep(6000); return 3; }
     DWORD mode = PIPE_READMODE_MESSAGE;
     if (!SetNamedPipeHandleState(pipe.get(), &mode, nullptr, nullptr) ||
         !atb_transport::WriteExact(pipe.get(), kHello, deadline)) return 3;
@@ -250,7 +251,7 @@ int Client(const std::wstring& pipeName, bool captureProof, bool replayProof,
 
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 4) {
-        std::cerr << "Usage: ipc_probe_win.exe server|server-stall|client|client-capture|client-replay <pipe-suffix> [expected-server-pid]\n";
+        std::cerr << "Usage: ipc_probe_win.exe server|server-stall|client|client-stall|client-capture|client-replay <pipe-suffix> [expected-server-pid]\n";
         return 2;
     }
     const std::wstring pipe = PipeName(argv[2]);
@@ -263,6 +264,7 @@ int main(int argc, char** argv) {
     unsigned long pid = std::strtoul(argv[3], &end, 10);
     if (!end || *end != '\\0' || pid == 0 || pid > 0xffffffffUL) return 2;
     if (mode == "client") return Client(pipe, false, false, static_cast<DWORD>(pid));
+    if (mode == "client-stall") return Client(pipe, false, false, static_cast<DWORD>(pid), true);
     if (mode == "client-capture") return Client(pipe, true, false, static_cast<DWORD>(pid));
     if (mode == "client-replay") return Client(pipe, false, true, static_cast<DWORD>(pid));
     return 2;
