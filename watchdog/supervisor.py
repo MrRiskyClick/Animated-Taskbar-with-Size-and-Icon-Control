@@ -12,7 +12,7 @@ import time
 
 from watchdog import core
 
-STALE_SECONDS = 1.5
+STALE_SECONDS = 5.0
 
 
 def register(root: Path, trial_id: str, token: str) -> bool:
