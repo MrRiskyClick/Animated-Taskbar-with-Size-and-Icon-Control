@@ -117,3 +117,9 @@ These are tests on standalone executables, not an authenticated channel inside t
 A Windows-native, **read-only standalone** verifier now compares a full executable SHA-256 against a pinned policy and can require Authenticode trust; it also checks PID creation time to reduce reused-PID mistakes. CI's unsigned test mode is **not suitable for production authorization**. Only an approved signed release, independently pinned hash/certificate identity and secure process/channel binding could become a trusted watchdog. On-disk verification is not memory attestation.
 
 None of this code is installed, injected into Explorer or linked to any shell mutation. See [WATCHDOG_IDENTITY.md](WATCHDOG_IDENTITY.md).
+
+## Stage 1i — release candidate cannot inherit trust from CI
+
+The existing Windows identity test now produces an explicitly UNTRUSTED diagnostic build manifest and stores a short-lived GitHub Actions artifact. A separate PowerShell verifier fails closed if the committed watchdog approval is absent, the SHA-256 differs, Windows Authenticode is untrusted/unsigned, or the signer thumbprint is not approved. The policy is intentionally unapproved. No signing, deployment, installation, Windhawk setting changes or shell changes are performed.
+
+A GitHub Actions artifact is **not** a release. Until a signed watchdog exists and the approval branch is independently reviewed/protected, no hash or signature from this workflow is an authority to modify Explorer. See [RELEASE_TRUST.md](RELEASE_TRUST.md).
