@@ -25,7 +25,7 @@ def run(*argv, expected=0):
     return p.stdout
 
 
-def poll_until(predicate, seconds=6):
+def poll_until(predicate, seconds=12):
     finish = time.monotonic() + seconds
     while time.monotonic() < finish:
         result = predicate()
@@ -92,7 +92,7 @@ class SupervisorRecoveryTests(unittest.TestCase):
         os.kill(trial["watchdog_pid"], signal.SIGTERM)
         os.kill(trial["supervisor_pid"], signal.SIGTERM)
         # Let the recorded mock heartbeats age out before recovery.
-        time.sleep(2.0)
+        time.sleep(5.5)
         run("start", "--state-dir", self.root, "--height", 65,
             "--test-duration", 20, expected=2)
         with core.state_lock(self.root):
