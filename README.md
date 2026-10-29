@@ -58,3 +58,7 @@ This does **not** yet recover the Windows taskbar, disable the Windhawk mod, res
 ## Stage 1b — version-gated Windhawk control
 
 A narrow [Windhawk CLI adapter](watchdog/windhawk_control.py) is under development. It recognizes the supported Windhawk 2.x CLI, constructs a command to **disable only this project's mod**, refuses requests to change other mods, and requires explicit opt-in before invoking anything. The adapter is **not yet wired to watchdog expiry**, and CI uses a fake command runner only. See [version-specific integration plan](docs/WINDHAWK_INTEGRATION.md). Windhawk 1.x remains an unsolved independent-disable integration and is intentionally fail-closed. The active taskbar safety gate is still open.
+
+## Current Stage 1b diagnostic bridge
+
+The watchdog now publishes a versioned, **read-only** observer lease during mock trials, and a native C++17 parser rejects stale, expired, malformed or mismatched records. The Windhawk diagnostic skeleton can observe a configured lease path and trial ID without altering the Windows shell. `python scripts/bundle_windhawk.py` generates a single Windhawk source file in `dist/` for controlled compilation tests. **This is not an authenticated authorization channel or a completed two-minute restore system**; native shell changes remain blocked until real-state rollback and watchdog-loss recovery are proven.
