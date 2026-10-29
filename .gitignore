@@ -8,3 +8,6 @@ trial_guard_tests
 .watchdog-state/
 watchdog-state/
 *.log
+# Generated one-file Windhawk diagnostic build
+dist/
+lease_v1_tests.exe
