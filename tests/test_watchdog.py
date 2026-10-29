@@ -46,21 +46,34 @@ class WatchdogTests(unittest.TestCase):
         self.root = pathlib.Path(self.folder.name)
         cli("init", "--state-dir", self.root, "--height", 44)
         self.pid = None
+        self.supervisor_pid = None
 
     def tearDown(self):
-        # Avoid leaving test watchdogs running when an assertion fails.
-        if self.pid is not None:
+        # On Windows the supervisor can still hold the journal lock when the
+        # phase changes. Terminate both mock processes before deleting files.
+        for pid in (self.pid, self.supervisor_pid):
+            if pid is not None:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except (OSError, ProcessLookupError):
+                    pass
+        last_error = None
+        for _ in range(30):
             try:
-                os.kill(self.pid, signal.SIGTERM)
-            except (OSError, ProcessLookupError):
-                pass
-        self.folder.cleanup()
+                self.folder.cleanup()
+                return
+            except PermissionError as exc:
+                last_error = exc
+                time.sleep(0.1)
+        if last_error:
+            raise last_error
 
     def start(self, *, duration=3, new_height=78):
         response = cli("start", "--state-dir", self.root,
                        "--height", new_height, "--test-duration", duration)
         record = json.loads(response)
         self.pid = record["watchdog_pid"]
+        self.supervisor_pid = record["supervisor_pid"]
         self.assertEqual(record["phase"], "ACTIVE")
         self.assertEqual(core.read_json(core.target_path(self.root)), {"height": new_height})
         return record
