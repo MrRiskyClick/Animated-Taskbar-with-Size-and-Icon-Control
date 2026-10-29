@@ -66,3 +66,7 @@ The watchdog now publishes a versioned, **read-only** observer lease during mock
 ## Stage 1c: redundant mock recovery
 
 The watchdog prototype now launches an independent supervisor before any mock mutation. Either process can restore the simulated baseline after the other stops sending heartbeats. A future launch can reconcile a stale journal while requiring a separate explicit command to rearm. These are mock-only recovery mechanisms, not an installed taskbar rollback solution. See [Safety](docs/SAFETY.md) and [Watchdog docs](watchdog/README.md).
+
+## Stage 1i — build provenance and release gate (not a release)
+
+The Windows CI suite now records an **UNTRUSTED** unsigned diagnostic artifact and its SHA-256/source commit, and verifies that the proposed release gate refuses unsigned, unapproved and tampered Windows binaries. `release/watchdog-approval.json` is blocked. No signing keys, signed native watchdog, installer or deployment exists. [Release trust and remaining gates](docs/RELEASE_TRUST.md). Active taskbar changes remain disabled.
