@@ -2,11 +2,11 @@
 // @id animated-taskbar-size-icon-control
 // @name Animated Taskbar (Read-Only Lease Diagnostic)
 // @description Diagnostic only: taskbar geometry and watchdog heartbeat observation; no shell modifications
-// @version 0.0.2
+// @version 0.0.3
 // @author Animated Taskbar project contributors
 // @include explorer.exe
 // @architecture x86-64
-// @compilerOptions -luser32
+// @compilerOptions -luser32 -ladvapi32
 // ==/WindhawkMod==
 
 // ==WindhawkModSettings==
@@ -17,6 +17,15 @@
 - diagnosticTrialId: ""
   $name: Expected trial ID (32 lowercase hexadecimal digits)
   $description: Must match the mock lease exactly. This is NOT permission to modify Windows.
+- diagnosticPipeSuffix: ""
+  $name: Read-only IPC test pipe suffix (optional)
+  $description: For a mock-only diagnostic test server. Leave blank on normal installations.
+- diagnosticPeerPid: 0
+  $name: Expected test server PID
+  $description: Diagnostic-only Windows PID; this is not a secure watchdog identity.
+- diagnosticPeerExecutable: ""
+  $name: Exact test server executable path
+  $description: Same-user path check only; NOT a trusted signature or secure IPC.
 */
 // ==/WindhawkModSettings==
 
@@ -25,12 +34,15 @@
 # Stage 1b read-only Windhawk diagnostic
 This source **never installs hooks, changes taskbar height, system tray, XAML,
 work area, registry values, or other Windhawk mod settings**.
+An optional named-pipe probe only verifies PID, same-user/session and the test
+executable path and exchanges a static diagnostic acknowledgement. It is NOT
+authentication or a trusted lease. Default configuration does not connect.
 It can monitor a user-specified `lease.v1` file emitted by the mock watchdog
 and log a fail-closed diagnostic result, but the file is NOT authentication.
 The session stops at 120 seconds even if the file still looks valid.
 
 Windhawk mods are single-file; use scripts/bundle_windhawk.py to embed our
-original src/core/lease_v1.hpp before compiling this prototype in Windhawk.
+original src/core headers and native IPC transport before compiling this prototype in Windhawk.
 Do not install active taskbar-changing builds until an independent durable
 rollback, authenticated IPC and Explorer failure handling are proven.
 */
@@ -42,6 +54,7 @@ rollback, authenticated IPC and Explorer failure handling are proven.
 #include <utility>
 
 #include "core/lease_v1.hpp" // Inlined by scripts/bundle_windhawk.py
+#include "core/diagnostic_ipc_win.hpp" // Inlined by scripts/bundle_windhawk.py
 
 namespace {
 HANDLE g_stopEvent = nullptr;
@@ -49,6 +62,10 @@ HANDLE g_timerThread = nullptr;
 volatile LONG g_diagnosticInactive = 0;
 std::wstring g_leaseFile;
 std::unique_ptr<animated_taskbar::LeaseObserver> g_observer;
+std::wstring g_ipcSuffix;
+std::wstring g_ipcExe;
+DWORD g_ipcPid = 0;
+bool g_ipcConfigured = false;
 
 std::uint64_t NowUtcMilliseconds() {
     FILETIME ft{};
@@ -93,6 +110,17 @@ void LogWindowState() {
 
 DWORD WINAPI DiagnosticThread(LPVOID) {
     const ULONGLONG started = GetTickCount64();
+    if (g_ipcConfigured) {
+        // This is read-only peer observation, NEVER trial authorization.
+        // Test server identity is based on a same-user path, not a signature.
+        const bool observed = atb_readonly::Probe(g_ipcSuffix, g_ipcPid, g_ipcExe);
+        if (!observed) {
+            InterlockedExchange(&g_diagnosticInactive, 1);
+            Wh_Log(L"Diagnostic: read-only IPC peer check rejected; no changes made");
+            return 0;
+        }
+        Wh_Log(L"Diagnostic: read-only IPC peer observed; NOT authenticated");
+    }
     while (WaitForSingleObject(g_stopEvent, 200) == WAIT_TIMEOUT) {
         if (GetTickCount64() - started >= 120000) {
             InterlockedExchange(&g_diagnosticInactive, 1);
@@ -122,6 +150,29 @@ BOOL Wh_ModInit() {
     std::wstring id = configuredId ? configuredId : L"";
     if (configuredFile) Wh_FreeStringSetting(configuredFile);
     if (configuredId) Wh_FreeStringSetting(configuredId);
+
+    const PCWSTR configuredSuffix = Wh_GetStringSetting(L"diagnosticPipeSuffix");
+    const PCWSTR configuredExe = Wh_GetStringSetting(L"diagnosticPeerExecutable");
+    const int configuredPid = Wh_GetIntSetting(L"diagnosticPeerPid");
+    std::wstring suffix = configuredSuffix ? configuredSuffix : L"";
+    std::wstring exe = configuredExe ? configuredExe : L"";
+    if (configuredSuffix) Wh_FreeStringSetting(configuredSuffix);
+    if (configuredExe) Wh_FreeStringSetting(configuredExe);
+    if (!suffix.empty() || !exe.empty() || configuredPid != 0) {
+        if (configuredPid <= 0 || !atb_readonly::ValidSuffix(suffix) || exe.empty()) {
+            Wh_Log(L"Diagnostic: incomplete/invalid IPC configuration; refusing");
+            return FALSE;
+        }
+        g_ipcSuffix = std::move(suffix);
+        g_ipcExe = std::move(exe);
+        g_ipcPid = static_cast<DWORD>(configuredPid);
+        g_ipcConfigured = true;
+    } else {
+        g_ipcConfigured = false;
+        g_ipcSuffix.clear();
+        g_ipcExe.clear();
+        g_ipcPid = 0;
+    }
 
     if (!file.empty() || !id.empty()) {
         if (file.empty() || id.size() != 32) {
@@ -168,5 +219,9 @@ void Wh_ModUninit() {
     }
     g_observer.reset();
     g_leaseFile.clear();
+    g_ipcSuffix.clear();
+    g_ipcExe.clear();
+    g_ipcPid = 0;
+    g_ipcConfigured = false;
     Wh_Log(L"Diagnostic: unloaded; no taskbar properties were modified");
 }
