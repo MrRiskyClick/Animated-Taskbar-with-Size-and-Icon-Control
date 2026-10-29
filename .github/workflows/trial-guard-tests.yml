@@ -13,3 +13,5 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/trial_guard_tests.cpp -o trial_guard_tests
       - name: Run Stage-0 rollback unit tests
         run: ./trial_guard_tests
+      - name: Validate required Windhawk compatibility targets
+        run: python3 tests/compatibility_manifest_tests.py
