@@ -246,7 +246,7 @@ def recover(root: Path, reason: str = "manual") -> dict:
         return _recover_locked(root, record, reason)
 
 
-def _supervisor_fresh(record: dict, max_age: float = 1.5) -> bool:
+def _supervisor_fresh(record: dict, max_age: float = 5.0) -> bool:
     beat = record.get("supervisor_heartbeat_utc")
     if not isinstance(record.get("supervisor_pid"), int):
         return False
@@ -331,8 +331,8 @@ def reconcile_stale(root: Path) -> tuple[dict | None, bool]:
             record["phase"] == "ACTIVE"
             and isinstance(record.get("heartbeat_utc"), (float, int))
             and isinstance(record.get("supervisor_heartbeat_utc"), (float, int))
-            and now - record["heartbeat_utc"] > 1.5
-            and now - record["supervisor_heartbeat_utc"] > 1.5
+            and now - record["heartbeat_utc"] > 5.0
+            and now - record["supervisor_heartbeat_utc"] > 5.0
         )
         startup_abandoned = (
             record["phase"] in ("PREPARED", "READY")
