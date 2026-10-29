@@ -8,6 +8,7 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace animated_taskbar {
 
