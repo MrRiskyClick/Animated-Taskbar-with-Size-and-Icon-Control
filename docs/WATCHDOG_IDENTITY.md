@@ -27,3 +27,9 @@ The test CLI in `tests/binary_identity_probe_win.cpp` supports a deliberately **
 - Microsoft WINTRUST_DATA documentation: https://learn.microsoft.com/en-us/windows/desktop/api/wintrust/ns-wintrust-wintrust_data
 
 **Stage 1 safety gate remains OPEN; the real taskbar must remain untouched.**
+
+## Stage 1i — release and approval are now separate
+
+The [release trust policy](RELEASE_TRUST.md) adds a completely blocked approval record (`release/watchdog-approval.json`) and a Windows PowerShell gate that checks exact source commit, file SHA-256, Authenticode trust and certificate thumbprint against independently approved values. No certificate or trusted watchdog binary is available. CI archives only an **UNTRUSTED** unsigned diagnostic with explicit provenance; this archive is not a release.
+
+Do not permit the current unprotected feature branch or an unreviewed manifest to provide the production trust anchor. Real authenticated watchdog IPC and Windows restore remain incomplete.
