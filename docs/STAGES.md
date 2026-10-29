@@ -146,3 +146,16 @@ This milestone is **not** Windows taskbar recovery; see [WATCHDOG_IDENTITY.md](W
 - [ ] Authenticated live IPC, install/boot recovery, verified real-property reversals and Windows failure injection.
 
 This release-process milestone does **not** satisfy Stage 1 safety. See [RELEASE_TRUST.md](RELEASE_TRUST.md).
+
+## Stage 1j — native Windows mock-only watchdog
+
+A real Windows-native C++17 watchdog **process** is now implemented for isolated mock state. It independently monitors an armed trial, writes heartbeats, enforces expiry, performs compare-before-restore of only a temporary mock file, and supports explicit reconciliation after its own crash. The parser/recovery contract is also tested on Windows and Linux. Short deadlines require a test-mode environment flag.
+
+This is deliberately called `atb-native-mock-watchdog.exe`, not the future signed production executable. There is no native installer, service or boot recovery and no connection to Windhawk or actual Windows taskbar settings. A killed watchdog leaves a changed mock until a separate recovery invocation. Stage 1 full safety is **NOT passed**. See [NATIVE_WATCHDOG.md](NATIVE_WATCHDOG.md).
+
+- [x] Native Windows mock process, strict journal parsing, dual clocks, atomic writes and exclusive lock.
+- [x] Native expiry and compare-before-restore, test of external-edit conflicts.
+- [x] Explicit stale/dead-process reconciliation without automatic trial rearm.
+- [ ] Automatic supervisor/boot recovery after native watchdog death or simultaneous process failure.
+- [ ] Authenticated native session IPC, approved signed watchdog and native Windhawk disable.
+- [ ] Snapshot and revert real taskbar properties with Windows crash/fault testing.

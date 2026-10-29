@@ -123,3 +123,9 @@ None of this code is installed, injected into Explorer or linked to any shell mu
 The existing Windows identity test now produces an explicitly UNTRUSTED diagnostic build manifest and stores a short-lived GitHub Actions artifact. A separate PowerShell verifier fails closed if the committed watchdog approval is absent, the SHA-256 differs, Windows Authenticode is untrusted/unsigned, or the signer thumbprint is not approved. The policy is intentionally unapproved. No signing, deployment, installation, Windhawk setting changes or shell changes are performed.
 
 A GitHub Actions artifact is **not** a release. Until a signed watchdog exists and the approval branch is independently reviewed/protected, no hash or signature from this workflow is an authority to modify Explorer. See [RELEASE_TRUST.md](RELEASE_TRUST.md).
+
+## Stage 1j — Windows-native monitoring, still mock only
+
+The new C++ executable monitors an isolated TEMP mock trial without relying on Python for the actual watcher loop. It strictly validates a durable journal and performs compare-before-restore on the fixture. It has no shell APIs, hooks, Windhawk control or installer. Native `reconcile` supports manual post-crash recovery but is not automatically invoked at Windows startup or after both recovery processes disappear. This must not be portrayed as a production 120-second restoration guarantee.
+
+The native watchdog is not signed or approved under the Stage 1i release policy and is not authenticated to the injected Explorer component. Details: [NATIVE_WATCHDOG.md](NATIVE_WATCHDOG.md).

@@ -99,3 +99,16 @@ jobs:
             diagnostic-artifact/untrusted-manifest.json
           retention-days: 3
           if-no-files-found: error
+      - name: Compile Stage-1j portable native trial journal
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/native_mock_core_tests.cpp -o native_mock_core_tests.exe
+      - name: Verify Stage-1j portable trial parser and compare-before-restore
+        run: ./native_mock_core_tests.exe
+      - name: Compile Stage-1j Windows-native mock-only watchdog
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. native/native_mock_watchdog_win.cpp -o atb-native-mock-watchdog.exe -lbcrypt
+      - name: Failure-inject native Windows mock watchdog (NO Explorer changes)
+        if: runner.os == 'Windows'
+        env:
+          ATB_NATIVE_MOCK_WATCHDOG: "./atb-native-mock-watchdog.exe"
+          ATB_NATIVE_MOCK_TEST_MODE: "1"
+        run: python -m unittest discover -s tests -p "test_native_mock_watchdog.py" -v
