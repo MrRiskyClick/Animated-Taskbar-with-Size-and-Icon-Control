@@ -52,3 +52,20 @@ jobs:
         env:
           ATB_NATIVE_IPC_PROBE: "./ipc_probe_win.exe"
         run: python -m unittest discover -s tests -p "test_native_ipc.py" -v
+      - name: Compile Stage-1g read-only diagnostic peer test host (Windows only)
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. tests/diagnostic_peer_host_win.cpp -o diagnostic_peer_host_win.exe -ladvapi32
+      - name: Verify read-only peer PID/image, absent server and invalid replies
+        if: runner.os == 'Windows'
+        env:
+          ATB_NATIVE_IPC_PROBE: "./ipc_probe_win.exe"
+          ATB_READONLY_PEER_HOST: "./diagnostic_peer_host_win.exe"
+        run: python -m unittest discover -s tests -p "test_readonly_peer.py" -v
+      - name: Validate Windhawk one-file diagnostic bundle
+        run: python scripts/bundle_windhawk.py --check
+      - name: Generate one-file diagnostic source for syntax check
+        if: runner.os == 'Windows'
+        run: python scripts/bundle_windhawk.py
+      - name: Syntax-check bundled Windhawk diagnostic against CI API shim
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -I. -include tests/windhawk_api_stub.hpp -fsyntax-only dist/animated-taskbar.wh.cpp

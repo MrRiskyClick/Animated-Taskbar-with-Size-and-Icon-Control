@@ -116,3 +116,11 @@ No native hooks or taskbar-changing operations are present in the diagnostic. **
 - [ ] Windows watchdog service/startup recovery, source-version-aware mod disable and real per-property Windows rollback.
 
 **No live taskbar mutation is permitted.** See [native/README.md](../native/README.md).
+
+## Stage 1g — Read-only Win32 IPC diagnostic integrated into mod source
+
+The existing Windhawk *diagnostic source* now contains an optional Windows named-pipe observer (disabled by default). If explicitly configured with a temporary test pipe suffix, expected server PID and exact test server executable path, it attempts a single bounded, read-only IPC observation on its diagnostic worker thread. Missing settings, unexpected Windows process identity, invalid reply, and timeout must fail closed by ending observation. The default still only reads geometry.
+
+A native Windows test host uses exactly the same IPC header as the mod; tests exercise successful peer observation, wrong PID/path, altered response, absent server and malformed suffix. The one-file bundler now embeds both the existing lease reader and the new bounded IPC code, and a CI-only Windhawk API declaration shim checks C++ syntax on Windows. **The shim is NOT proof it compiles or loads in the real Windhawk environment.**
+
+This is **not production authenticated IPC**: no protected credential or challenge/response exists inside the Windhawk mod, the ACK is static, the executable path is not signature verification, and there is no trust established in the watchdog binary. Crucially, the diagnostic results **cannot authorize any taskbar modification**. Packaging, deployment, boot recovery, exact property restoration and Windhawk version-specific disabling are still blocking.

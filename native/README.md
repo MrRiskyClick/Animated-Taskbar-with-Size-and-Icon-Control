@@ -33,3 +33,11 @@ The client additionally queries the actual pipe server PID, opens that process, 
 Failure-injection tests now cover a missing client, an intentionally silent server, and a mismatched expected server PID, in addition to earlier wrong-secret and replay attacks.
 
 **No Windhawk integration is implied by this:** neither a credential nor an authenticated IPC client has yet been installed inside the read-only Windhawk mod. The existing mock watchdog is still Python. A true Explorer/watchdog bridge needs protected session-scoped secret handoff and a Windows-native watchdog implementation, not a hardcoded token in Windhawk settings.
+
+## Stage 1g — Windhawk diagnostic source bridge
+
+A new source header, src/core/diagnostic_ipc_win.hpp, defines a **read-only** peer probe reusing the Stage 1f bounded named-pipe transport. The existing native test executable has an observer-server mode that accepts a static 8-byte diagnostic hello after Windows SID/session checks and replies with a static ack. Tests compile a separate host directly from the same header that is bundled into the Windhawk diagnostic source.
+
+All three Windhawk diagnostic peer settings default to off. Test mode does not use a secret and cannot authorize mutations. Source bundling is CI syntax-checked using stub API declarations, not installed or loaded into Explorer.
+
+**Security constraint:** PID, same-user SID/session and an executable path are useful *diagnostic assertions*, not a trusted binary identity. A replaceable same-user image and an unauthenticated static response are not sufficient for a production watchdog channel. Production release remains blocked pending a signed/pinned watchdog identity policy, protected key bootstrap, native recovery, and verified rollback.
