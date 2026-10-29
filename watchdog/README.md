@@ -49,4 +49,8 @@ Do not use an existing trial directory: `init` refuses overwrites. The developer
 
 ## Status
 
-Mock-only CI coverage is useful evidence for the *journal and external process logic*, not proof of Windows taskbar restoration. 
+Mock-only CI coverage is useful evidence for the *journal and external process logic*, not proof of Windows taskbar restoration.
+
+## Stage 1b Windhawk CLI research
+
+Windhawk 2.x has an official `windhawk-cli.exe mod disable <id>` command. `windhawk_control.py` is an isolated, *dry-run-by-default* adapter that only permits our exact mod ID and refuses Windhawk 1.x/unknown CLI versions. **It is not called by the expiry loop** and unit tests use a fake runner. See [Windhawk integration design](../docs/WINDHAWK_INTEGRATION.md). Never infer that this adapter gives the existing 1.x installation an automatic 2-minute restore.
