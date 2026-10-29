@@ -58,3 +58,9 @@ For Stage 1 production, implement authenticated and permission-scoped coordinati
 As of Stage 1d, the mock controller sends a per-trial random credential to the watchdog and supervisor through their inherited stdin pipes. The mock journal persists the SHA-256 verifier rather than the credential itself; the raw token is not passed on either child command line. The schema version is now 2, and older unresolved journal records fail closed.
 
 **This does not authenticate a Windhawk/Explorer process.** The current read-only lease file is still forgeable by another process with write access to the mock directory, and there is no OS-backed peer identity or nonce exchange. Before active taskbar work, replace mock pipe/journal trust with an ACL-protected Windows named pipe and independently verified client process identity plus one-use challenge/response.
+
+## Stage 1e — native named-pipe proof of concept (not integrated)
+
+An independent standalone Windows IPC probe implements a session-local, same-user named-pipe exchange with OS-reported PID/session/SID checks, HMAC-SHA256 mutual challenge/response and nonce-based replay resistance. This is a feasibility test, **not** a Windhawk/Explorer authenticated channel. The actual mod is read-only, still has no handshake or taskbar-changing authority, and no Windows-specific restoration has been verified.
+
+See [native probe threat model](../native/README.md). Required next: bounded overlapped I/O; authenticated binding to a verified watchdog executable/session; protected per-trial secret bootstrap; durable Windows rollback journal; and failure-injection before enabling any real taskbar changes.
