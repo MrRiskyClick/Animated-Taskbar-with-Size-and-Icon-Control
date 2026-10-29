@@ -35,3 +35,11 @@ Test cases:
 ## Evidence recording
 
 For each test report Windows version + build, Windhawk version, existing enabled mods and versions, primary/secondary monitor resolution/scaling, configured 120s trial ID, baseline work-area rectangle, post-change rectangle, post-rollback rectangle, plus logs and the user's pass/fail for visual/interaction tests. Never assert "fully restored" from logs alone.
+
+## Additional coexistence matrix (all stages, no assumed success)
+
+For each relevant app/theme mod: baseline standalone; our mod standalone; both enabled in each enable order; full multi-mod user theme stack; editing styles during 120s trial; expiry while a native popup is open; unloading one mod while others remain; Explorer restart and monitor/DPI changes. Capture exact mod versions and settings, not just names.
+
+Targets: **Windows 11 Taskbar Styler** (SimplyTransparent plus custom pip settings), **Start Menu Styler**, **Notification Center Styler**, **Taskbar tray system icon tweaks**, and **Taskbar height and icon size**. Compare the integrated animation to **Ph0en1x-dev Taskbar Dock Animation** as the original baseline; test deliberate simultaneous activation only as a controlled conflict detection case, not as a supported mode by default.
+
+Compatibility cannot be proven by compilation, screenshots or an automated program that only checks for Explorer's existence. User must manually test actual hover, click-through, Start/search, quick settings, notification flyouts, tray visibility and grouped icon previews. Use [COMPATIBILITY.md](COMPATIBILITY.md) for the definitive table.
