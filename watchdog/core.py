@@ -251,3 +251,25 @@ def tick(root: Path, trial_id: str, token: str) -> bool:
         record["heartbeat_utc"] = time.time()
         atomic_json(journal_path(root), record)
         return True
+
+
+def lease_is_healthy(root: Path, trial_id: str, max_heartbeat_age: float = 1.5) -> bool:
+    """Future integration read gate: must be checked BEFORE every mutation.
+
+    An active heartbeat is a necessary but not sufficient safety guarantee:
+    the watchdog could die immediately after this returns. Windows shell
+    mutations remain forbidden until a production mod-side lease/IPC exists.
+    """
+    try:
+        with state_lock(root):
+            record = load(root)
+            beat = record["heartbeat_utc"]
+            return (
+                record["trial_id"] == trial_id
+                and record["phase"] == "ACTIVE"
+                and isinstance(beat, (int, float))
+                and 0 <= time.time() - beat <= max_heartbeat_age
+                and not elapsed(record)
+            )
+    except (SafetyError, OSError):
+        return False
