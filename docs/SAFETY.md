@@ -105,3 +105,9 @@ A new random 256-bit token is transferred to each mock safety subprocess via std
 A standalone Windows-only named-pipe server/client prototype uses a random challenge, separate server/client HMAC proof domains, a restricted current-user DACL, remote-client rejection, and checks the kernel-reported client PID, session and impersonated user SID. Tokens are passed to standalone test subprocesses via stdin; no token is committed or added to the watchdog's journal. A portable wire-format contract can compile on Linux and Windows.
 
 **The native executable is not loaded into Explorer and is not called by the watchdog.** It performs no taskbar modifications. In particular, lack of bounded overlapped I/O, trusted executable verification, production secret provisioning, rollback of real shell state and boot recovery all remain release-blocking. Test source: [native/README.md](../native/README.md).
+
+## Stage 1f — bounded Windows pipe operations
+
+The native IPC diagnostic moved from unbounded synchronous named-pipe calls to deadline-scoped OVERLAPPED connect/read/write with CancelIoEx and completion drain on timeout. The test client rejects unexpected server PID, user SID, session and executable path. The server's random nonce and two-way HMAC remain in place.
+
+These are tests on standalone executables, not an authenticated channel inside the actual Windhawk mod. Cancellation is not a formal whole-machine timing guarantee if Windows itself hangs; verification of production watchdog executable signatures, secure key bootstrap, reboot recovery and native taskbar restoration remain mandatory.
