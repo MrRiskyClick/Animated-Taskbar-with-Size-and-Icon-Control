@@ -56,3 +56,9 @@ A prototype in `watchdog/` provides:
 **Not production-ready:** there is no Explorer/Windhawk IPC, native taskbar adapter, Windows-ready app packaging, shell-mod disabling, watchdog auto-respawn/startup recovery, or independently verified machine state restoration. The watchdog process can be killed; without a separate recovery process or the mod-side fail-closed integration, a modified mock can remain altered. This is why Stage 1's full gate remains **OPEN**, and Stages 3+ must remain blocked.
 
 Review [watchdog/README.md](../watchdog/README.md) and the [Stage 1 safety specification](SAFETY.md).
+
+## Stage 1b — mod-control adapter work (not yet shell-integrated)
+
+An exact-mod-ID-only, dry-run-by-default Windhawk CLI adapter is present for Windhawk **2.x** (which has the official `windhawk-cli.exe`). Fake-runner tests validate version, command and error policy on Windows/Linux; no real Windhawk invocation or shell mutation has been performed. There is no automatic disable on watchdog expiry yet and no supported Windhawk 1.x independent-disable mechanism. Detailed acceptance requirements: [WINDHAWK_INTEGRATION.md](WINDHAWK_INTEGRATION.md).
+
+The Stage 1 safety gate is still **not passed**. Development cannot proceed to live taskbar modifications until mod-side lease enforcement, startup recovery, durable real-property rollback, and failure injection are completed.
