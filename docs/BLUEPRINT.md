@@ -71,3 +71,9 @@ Input:   only button/popup regions interactive, otherwise click-through
 ```
 
 These are conceptual defaults. User-specific actual taskbar geometry will be measured, **not guessed from screenshots**.
+
+## Mod ownership and compatibility overlay
+
+A separate native-shell **compatibility layer** must track ownership of all properties we touch. Desired boundaries: native Windows owns grouping/preview/Jump Lists; m417z Taskbar Styler owns user-selected theme/brushes and pip styles; m417z tray-tweaks mod owns visibility of system-tray controls; our project owns the separate render-region geometry and integrated Ph0en1x-style native-button motion. Existing m417z taskbar height mod may contend for geometry, requiring explicit migration or coordinated settings. Start Menu/Notification Center stylers run primarily in separate processes but rely on taskbar button anchors, Z-order and hit-test correctness.
+
+Do not alter external mods' stored settings, bypass their hooks, or promise safe coexistence without Windows-host experiments. Preserve original style properties before touching them and restore only our changes on trial expiry. Full matrix: [COMPATIBILITY.md](COMPATIBILITY.md).
