@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 from watchdog import core
 
@@ -126,7 +127,7 @@ class WatchdogTests(unittest.TestCase):
             self.assertLess(record["created_mono"], record["deadline_mono"])
 
     def test_no_test_duration_outside_test_mode(self):
-        with unittest.mock.patch.dict(os.environ, {"ATB_WATCHDOG_TEST_MODE": ""}):
+        with mock.patch.dict(os.environ, {"ATB_WATCHDOG_TEST_MODE": ""}):
             with self.assertRaises(core.SafetyError):
                 core.prepare(self.root, 70, test_duration=0.1)
 
