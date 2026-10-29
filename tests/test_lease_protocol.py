@@ -35,11 +35,17 @@ class LeaseProtocolTests(unittest.TestCase):
         self.assertFalse(lease.exists())
 
     def test_expiry_revokes_file_and_restores_mock(self):
-        record = core.prepare(self.root, 70, test_duration=0.1)
+        # A 0.1-second trial can expire during normal Windows file I/O.
+        # Establish a healthy trial first, THEN simulate expiry explicitly.
+        record = core.prepare(self.root, 70, test_duration=10)
         self.assertTrue(core.ready(self.root, record["trial_id"], record["token"]))
         core.guarded_mock_apply(self.root, record["trial_id"])
         self.assertTrue(core.tick(self.root, record["trial_id"], record["token"]))
-        time.sleep(0.2)
+        with core.state_lock(self.root):
+            state = core.load(self.root)
+            state["deadline_utc"] = state["created_utc"] + 0.001
+            state["deadline_mono"] = state["created_mono"] + 0.001
+            core.atomic_json(core.journal_path(self.root), state)
         self.assertFalse(core.tick(self.root, record["trial_id"], record["token"]))
         self.assertFalse(lease_protocol.lease_path(self.root).exists())
         self.assertEqual(core.read_json(core.target_path(self.root)), {"height": 44})
