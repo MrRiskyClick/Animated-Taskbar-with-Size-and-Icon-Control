@@ -33,7 +33,7 @@ def main():
                         help="Validate source/header and produce no output")
     args = parser.parse_args()
     result = bundle()
-    if not result.count("==WindhawkMod==") == 2:
+    if result.count("// ==WindhawkMod==") != 1 or result.count("// ==/WindhawkMod==") != 1:
         raise RuntimeError("Missing balanced Windhawk mod metadata block")
     if MARKER in result:
         raise RuntimeError("Unreplaced local header include")
