@@ -45,3 +45,14 @@ Compatibility inventory is added to **Stage 0 research**, read-only conflict dia
 Supported coexistence targets: Taskbar Styler (including SimplyTransparent and user custom running pips), Start Menu Styler, Notification Center Styler, Taskbar tray system icon tweaks and height/icon-size customizations. Animation references: Ph0en1x-dev original Dock Animation standalone baseline versus integrated dock animation. Two animation engines running on the same task buttons are a known likely conflict and must be detected / failed closed unless safe coordination is actually proven.
 
 Per-stage acceptance: unchanged third-party mod configuration and appearance except user-selected overrides; valid native popup anchors; tray, clock, Start/search, notifications and Aero Peek operational; rollback does not reset any unrelated user's theme preferences. [Matrix](COMPATIBILITY.md).
+
+## Stage 1a — external watchdog prototype (in development)
+
+A prototype in `watchdog/` provides:
+- separate-process 120-second deadline, persistent mock trial journal, file locks, before-apply snapshot and watchdog-ready acknowledgement;
+- comparison-based mock rollback and manual recovery after a simulated watchdog kill;
+- mock integration tests on both Windows and Linux.
+
+**Not production-ready:** there is no Explorer/Windhawk IPC, native taskbar adapter, Windows-ready app packaging, shell-mod disabling, watchdog auto-respawn/startup recovery, or independently verified machine state restoration. The watchdog process can be killed; without a separate recovery process or the mod-side fail-closed integration, a modified mock can remain altered. This is why Stage 1's full gate remains **OPEN**, and Stages 3+ must remain blocked.
+
+Review [watchdog/README.md](../watchdog/README.md) and the [Stage 1 safety specification](SAFETY.md).
