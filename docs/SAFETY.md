@@ -111,3 +111,9 @@ A standalone Windows-only named-pipe server/client prototype uses a random chall
 The native IPC diagnostic moved from unbounded synchronous named-pipe calls to deadline-scoped OVERLAPPED connect/read/write with CancelIoEx and completion drain on timeout. The test client rejects unexpected server PID, user SID, session and executable path. The server's random nonce and two-way HMAC remain in place.
 
 These are tests on standalone executables, not an authenticated channel inside the actual Windhawk mod. Cancellation is not a formal whole-machine timing guarantee if Windows itself hangs; verification of production watchdog executable signatures, secure key bootstrap, reboot recovery and native taskbar restoration remain mandatory.
+
+## Stage 1h — independent binary-identity proof of concept
+
+A Windows-native, **read-only standalone** verifier now compares a full executable SHA-256 against a pinned policy and can require Authenticode trust; it also checks PID creation time to reduce reused-PID mistakes. CI's unsigned test mode is **not suitable for production authorization**. Only an approved signed release, independently pinned hash/certificate identity and secure process/channel binding could become a trusted watchdog. On-disk verification is not memory attestation.
+
+None of this code is installed, injected into Explorer or linked to any shell mutation. See [WATCHDOG_IDENTITY.md](WATCHDOG_IDENTITY.md).
