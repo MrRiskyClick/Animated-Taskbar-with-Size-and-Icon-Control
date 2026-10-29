@@ -141,6 +141,9 @@ def prepare(root: Path, requested_height: int, *, test_duration: float | None = 
             previous = load(root)
             if previous["phase"] not in TERMINAL_PHASES:
                 raise SafetyError("Outstanding trial/conflict; recover before rearming")
+        # Revoke any prior observer lease before preparing a new trial.
+        from watchdog import lease_protocol
+        lease_protocol.revoke_lease(root)
         baseline = read_json(target_path(root))
         if set(baseline) != {"height"} or type(baseline["height"]) is not int:
             raise SafetyError("Unexpected mock baseline; no change permitted")
@@ -228,6 +231,8 @@ def _recover_locked(root: Path, record: dict, reason: str) -> dict:
         record["result"] = "Target changed externally; left untouched"
     record["heartbeat_utc"] = time.time()
     atomic_json(journal_path(root), record)
+    from watchdog import lease_protocol
+    lease_protocol.revoke_lease(root)
     return record
 
 
@@ -244,12 +249,26 @@ def tick(root: Path, trial_id: str, token: str) -> bool:
         if record["trial_id"] != trial_id or record["token"] != token:
             raise SafetyError("Watchdog trial identity mismatch")
         if record["phase"] in TERMINAL_PHASES or record["phase"] in ("CONFLICT", "RECOVERY_FAILED"):
+            from watchdog import lease_protocol
+            lease_protocol.revoke_lease(root)
             return False
         if elapsed(record):
             _recover_locked(root, record, "deadline")
             return False
         record["heartbeat_utc"] = time.time()
         atomic_json(journal_path(root), record)
+        # Export a read-only health snapshot for future native lease probes.
+        # Never treat this file as an authorization credential.
+        from watchdog import lease_protocol
+        if record["phase"] == "ACTIVE":
+            try:
+                next_sequence = int(record.get("lease_sequence", 0)) + 1
+                record["lease_sequence"] = next_sequence
+                atomic_json(journal_path(root), record)
+                lease_protocol.publish_lease(root, record, next_sequence)
+            except (OSError, SafetyError, ValueError):
+                _recover_locked(root, record, "lease-publish-failed")
+                raise SafetyError("Lease publishing failed; mock trial reverted")
         return True
 
 
