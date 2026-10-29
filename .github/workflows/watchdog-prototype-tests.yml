@@ -40,3 +40,15 @@ jobs:
           ATB_WATCHDOG_TEST_MODE: "1"
           ATB_NATIVE_LEASE_PROBE: "./lease_file_probe.exe"
         run: python -m unittest discover -s tests -p "test_lease_interop.py" -v
+      - name: Compile Stage-1e portable IPC protocol
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/ipc_protocol_tests.cpp -o ipc_protocol_tests.exe
+      - name: Test Stage-1e portable IPC protocol
+        run: ./ipc_protocol_tests.exe
+      - name: Compile Windows-native named pipe diagnostic (NO shell changes)
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. native/ipc_probe_win.cpp -o ipc_probe_win.exe -lbcrypt -ladvapi32
+      - name: Verify native named-pipe client identity, HMAC and replay rejection
+        if: runner.os == 'Windows'
+        env:
+          ATB_NATIVE_IPC_PROBE: "./ipc_probe_win.exe"
+        run: python -m unittest discover -s tests -p "test_native_ipc.py" -v
