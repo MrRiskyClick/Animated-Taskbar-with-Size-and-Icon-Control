@@ -28,3 +28,15 @@
 - Existing m417z and other upstream mods include GPLv3 notices. When substantially adapting or combining GPL code, distribute the derivative under GPL-compatible terms and preserve copyright notices, source and license.
 - This first branch uses **original, non-copied scaffolding** only. License selection for any GPL-derived implementation must be completed before integration.
 - Keep an eventual `THIRD_PARTY_NOTICES.md` with source URL, source commit SHA, file/line/function name, license and transformations.
+
+## Added first-class companion mods (compatibility, not wholesale source import)
+
+| Original source | What our project must preserve / study | Shared ownership risk |
+|---|---|---|
+| [Ph0en1x-dev Taskbar Dock Animation](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp) | **Primary animation reference**: original dock hover, radius, magnification, easing, native icon manipulation. Diff exact behavior with our new engine | Double transforms/hooks if both animation engines operate together. Treat standalone mod as baseline only until safe coexistence is proven |
+| [m417z Windows 11 Start Menu Styler](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/windows-11-start-menu-styler.wh.cpp) | Start/search XAML theme, launch routing, popup placement and focus | Separate start/search host processes, but work-area/anchor and pointer interaction matter |
+| [m417z Windows 11 Notification Center Styler](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/windows-11-notification-center-styler.wh.cpp) | Calendar, bell, quick settings flyout styling and opening from native tray | Separate ShellExperienceHost/ShellHost; tray geometry and click-through overlap possible |
+| [m417z Taskbar tray system icon tweaks](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-tray-system-icon-tweaks.wh.cpp) | System tray icon hiding, show desktop width, bell visibility and native controls | Same explorer.exe and native tray XAML; keep tray visibility owned by existing mod |
+| [m417z Windows 11 Taskbar Styler](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/windows-11-taskbar-styler.wh.cpp) | Preserve theme changes, native running indicators, background, layout changes | Same Explorer task-list visual tree; our animation transforms may overwrite user theme |
+
+See [COMPATIBILITY.md](COMPATIBILITY.md) for versions, process ownership, interaction tests and unsupported combinations. No code from these upstream sources has been copied at this stage.
