@@ -37,3 +37,11 @@ Stages are sequential: passing a stage requires evidence, not just compiling.
 ### Stage 0 status
 
 Documentation/scaffold only. No claims about successful Windhawk compilation, native rehosting, watchdog readiness, or visual behavior until independently demonstrated.
+
+## Expanded cross-mod release gate (required, not optional late polish)
+
+Compatibility inventory is added to **Stage 0 research**, read-only conflict diagnostics to **Stage 2**, interaction checks to **Stages 3–6** and the full matrix to **Stage 7**. No stage can silently defer a critical theme or tray regression to Stage 7.
+
+Supported coexistence targets: Taskbar Styler (including SimplyTransparent and user custom running pips), Start Menu Styler, Notification Center Styler, Taskbar tray system icon tweaks and height/icon-size customizations. Animation references: Ph0en1x-dev original Dock Animation standalone baseline versus integrated dock animation. Two animation engines running on the same task buttons are a known likely conflict and must be detected / failed closed unless safe coordination is actually proven.
+
+Per-stage acceptance: unchanged third-party mod configuration and appearance except user-selected overrides; valid native popup anchors; tray, clock, Start/search, notifications and Aero Peek operational; rollback does not reset any unrelated user's theme preferences. [Matrix](COMPATIBILITY.md).
