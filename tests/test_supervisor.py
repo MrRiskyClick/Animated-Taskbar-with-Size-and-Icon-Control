@@ -87,6 +87,22 @@ class SupervisorRecoveryTests(unittest.TestCase):
         os.kill(rec["supervisor_pid"], signal.SIGTERM)
         self.await_recovery()
 
+    def test_both_safety_processes_lost_reconcile_without_auto_rearm(self):
+        trial = self.active()
+        os.kill(trial["watchdog_pid"], signal.SIGTERM)
+        os.kill(trial["supervisor_pid"], signal.SIGTERM)
+        # Let the recorded mock heartbeats age out before recovery.
+        time.sleep(2.0)
+        run("start", "--state-dir", self.root, "--height", 65,
+            "--test-duration", 9, expected=2)
+        with core.state_lock(self.root):
+            state = core.load(self.root)
+        self.assertEqual(state["phase"], "RECOVERED")
+        self.assertEqual(core.read_json(core.target_path(self.root)), {"height": 43})
+        # A new, explicit user start is necessary after recovery.
+        new_trial = self.active()
+        self.assertNotEqual(new_trial["trial_id"], trial["trial_id"])
+
     def test_absent_supervisor_rejected_before_mock_apply(self):
         trial = core.prepare(self.root, 69, test_duration=9)
         # Direct legacy fixture path can run without supervisor and is NOT
