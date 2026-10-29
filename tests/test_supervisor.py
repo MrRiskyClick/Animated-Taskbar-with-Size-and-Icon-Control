@@ -52,7 +52,18 @@ class SupervisorRecoveryTests(unittest.TestCase):
                 os.kill(pid, signal.SIGTERM)
             except OSError:
                 pass
-        self.temp.cleanup()
+        # Windows releases a terminated process's file handles asynchronously.
+        # Allow the OS to release the journal lock before removing the fixture.
+        last_error = None
+        for _ in range(30):
+            try:
+                self.temp.cleanup()
+                return
+            except PermissionError as exc:
+                last_error = exc
+                time.sleep(0.1)
+        if last_error:
+            raise last_error
 
     def active(self):
         record = json.loads(run("start", "--state-dir", self.root,
