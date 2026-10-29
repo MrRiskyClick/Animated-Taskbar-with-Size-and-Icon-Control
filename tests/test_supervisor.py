@@ -56,7 +56,7 @@ class SupervisorRecoveryTests(unittest.TestCase):
 
     def active(self):
         record = json.loads(run("start", "--state-dir", self.root,
-                                "--height", 76, "--test-duration", 9))
+                                "--height", 76, "--test-duration", 20))
         self.assertEqual(record["phase"], "ACTIVE")
         self.assertIsInstance(record["watchdog_pid"], int)
         self.assertIsInstance(record["supervisor_pid"], int)
@@ -94,7 +94,7 @@ class SupervisorRecoveryTests(unittest.TestCase):
         # Let the recorded mock heartbeats age out before recovery.
         time.sleep(2.0)
         run("start", "--state-dir", self.root, "--height", 65,
-            "--test-duration", 9, expected=2)
+            "--test-duration", 20, expected=2)
         with core.state_lock(self.root):
             state = core.load(self.root)
         self.assertEqual(state["phase"], "RECOVERED")
@@ -104,7 +104,7 @@ class SupervisorRecoveryTests(unittest.TestCase):
         self.assertNotEqual(new_trial["trial_id"], trial["trial_id"])
 
     def test_absent_supervisor_rejected_before_mock_apply(self):
-        trial = core.prepare(self.root, 69, test_duration=9)
+        trial = core.prepare(self.root, 69, test_duration=20)
         # Direct legacy fixture path can run without supervisor and is NOT
         # a production API. New CLI path requires supervisor handshake.
         self.assertIsNone(trial.get("supervisor_pid"))
