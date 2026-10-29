@@ -86,3 +86,14 @@ The Stage 1 safety gate is still **not passed**. Development cannot proceed to l
 - [ ] Native Windows property rollback and Windhawk per-mod disable confirmed in the installed version.
 
 **Stage 1 continues to block all live taskbar modifications.**
+
+## Stage 1d mock capability hardening
+
+- [x] Pipe-delivered random per-trial credentials; no raw token in mock subprocess command lines.
+- [x] Raw token excluded from on-disk mock journal; SHA-256 verifier with constant-time comparison.
+- [x] Version 2 journal, older unresolved journals block new trials.
+- [x] Local credential contract tests; cross-process integration checked by Windows/Linux CI.
+- [ ] Authenticated Windows Explorer ↔ watchdog IPC with verified process/user identity and replay protection.
+- [ ] Boot-time recovery, supported Windhawk auto-disable, real taskbar property restoration.
+
+Stage 1 is **NOT** complete; live taskbar modifications remain blocked.
