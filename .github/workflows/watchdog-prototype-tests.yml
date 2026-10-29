@@ -25,3 +25,10 @@ jobs:
         run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/lease_v1_tests.cpp -o lease_v1_tests.exe
       - name: Run native lease protocol tests
         run: ./lease_v1_tests.exe
+      - name: Compile Python-to-C++ lease probe
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/lease_file_probe.cpp -o lease_file_probe.exe
+      - name: Test Python publisher against native lease reader
+        env:
+          ATB_WATCHDOG_TEST_MODE: "1"
+          ATB_NATIVE_LEASE_PROBE: "./lease_file_probe.exe"
+        run: python -m unittest discover -s tests -p "test_lease_interop.py" -v
