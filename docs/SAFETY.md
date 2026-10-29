@@ -93,3 +93,9 @@ The mock harness now arms an **independent recovery supervisor before it launche
 A separate supervisor starts before mock modifications and watches the watchdog heartbeat. The primary watchdog also watches supervisor freshness. After either isolated process dies, the other attempts prompt compare-before-restore rollback. A subsequent CLI startup checks an unresolved, expired/stale journal; if recovery is performed, it refuses automatic rearm.
 
 **Residuals:** Both processes crashing still leaves state changed until the next start or future configured boot-time recovery. A Windows sleep or system shutdown can suspend both timers. A taskbar controller must use a more authoritative Windows process identity and authenticated IPC, and must not rely on user-writable journal heartbeats or tokens passed in process command lines. Tests are mock-only; no actual Explorer state has been restored.
+
+## Stage 1d mock credential-handling improvement
+
+A new random 256-bit token is transferred to each mock safety subprocess via stdin rather than embedding it in its process argument list. The on-disk journal stores a SHA-256 digest, with constant-time token verification. Schema version 2 rejects stale version 1 journals rather than silently rearming. This reduces accidental credential disclosure and tests realistic child-process handoff.
+
+**Still not production authentication:** same-user writable state and an unauthenticated read-only lease file must never grant permission to alter Explorer. Production Windows IPC/ACL, peer identity, replay prevention, boot recovery, and real taskbar rollback remain open.

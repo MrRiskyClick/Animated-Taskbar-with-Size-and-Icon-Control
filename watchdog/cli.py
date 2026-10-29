@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 
-from watchdog import core
+from watchdog import core, mock_credentials
 
 
 def print_state(record: dict):
@@ -23,8 +23,8 @@ def print_state(record: dict):
     print(json.dumps(output, indent=2, sort_keys=True), flush=True)
 
 
-def _detached_process(argv: list[str]) -> subprocess.Popen:
-    kwargs = {"stdin": subprocess.DEVNULL,
+def _detached_process(argv: list[str], token: str) -> subprocess.Popen:
+    kwargs = {"stdin": subprocess.PIPE,
               "stdout": subprocess.DEVNULL,
               "stderr": subprocess.DEVNULL}
     if os.name == "nt":
@@ -32,7 +32,9 @@ def _detached_process(argv: list[str]) -> subprocess.Popen:
                                    subprocess.CREATE_NEW_PROCESS_GROUP)
     else:
         kwargs["start_new_session"] = True
-    return subprocess.Popen(argv, **kwargs)
+    process = subprocess.Popen(argv, **kwargs)
+    mock_credentials.send(process.stdin, token)
+    return process
 
 
 def run_start(root: Path, height: int, duration: float | None) -> int:
@@ -53,7 +55,7 @@ def run_start(root: Path, height: int, duration: float | None) -> int:
         supervisor = _detached_process([
             sys.executable, "-m", "watchdog.supervisor",
             "--state-dir", str(root.resolve()), "--trial-id", record["trial_id"],
-            "--token", record["token"]])
+            ], record["token"])
         ready_deadline = time.monotonic() + 5
         while time.monotonic() < ready_deadline:
             if supervisor.poll() is not None:
@@ -70,7 +72,7 @@ def run_start(root: Path, height: int, duration: float | None) -> int:
         child = _detached_process([
             sys.executable, "-m", "watchdog.cli", "watch",
             "--state-dir", str(root.resolve()), "--trial-id", record["trial_id"],
-            "--token", record["token"]])
+            ], record["token"])
         ready_deadline = time.monotonic() + 5
         while time.monotonic() < ready_deadline:
             if child.poll() is not None or supervisor.poll() is not None:
@@ -119,7 +121,7 @@ def main(argv: list[str] | None = None) -> int:
             cmd.add_argument("--test-duration", type=float, default=None)
         if action == "watch":
             cmd.add_argument("--trial-id", required=True)
-            cmd.add_argument("--token", required=True)
+            # Trial credential is read from child stdin, not from argv.
 
     args = parser.parse_args(argv)
     root = args.state_dir.resolve()
@@ -132,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "start":
             return run_start(root, args.height, args.test_duration)
         elif args.action == "watch":
-            return run_watch(root, args.trial_id, args.token)
+            return run_watch(root, args.trial_id, mock_credentials.receive(sys.stdin.buffer))
         elif args.action == "status":
             with core.state_lock(root):
                 print_state(core.load(root))
