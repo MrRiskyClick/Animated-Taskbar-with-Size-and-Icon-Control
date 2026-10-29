@@ -184,6 +184,8 @@ def ready(root: Path, trial_id: str, token: str) -> bool:
             return False
         if record["phase"] != "PREPARED" or elapsed(record):
             return False
+        if record.get("supervisor_pid") is not None and not _supervisor_fresh(record):
+            return False
         record["phase"] = "READY"
         record["watchdog_pid"] = os.getpid()
         record["heartbeat_utc"] = time.time()
@@ -200,6 +202,8 @@ def guarded_mock_apply(root: Path, trial_id: str):
         record = load(root)
         if record["trial_id"] != trial_id or record["phase"] != "READY" or elapsed(record):
             raise SafetyError("Watchdog not ready, or trial expired; refusing mutation")
+        if record.get("supervisor_pid") is not None and not _supervisor_fresh(record):
+            raise SafetyError("Recovery supervisor not healthy; refusing mutation")
         actual = read_json(target_path(root))
         if actual != record["baseline"]:
             raise SafetyError("Pre-change baseline drifted; refusing mutation")
@@ -242,6 +246,16 @@ def recover(root: Path, reason: str = "manual") -> dict:
         return _recover_locked(root, record, reason)
 
 
+def _supervisor_fresh(record: dict, max_age: float = 1.5) -> bool:
+    beat = record.get("supervisor_heartbeat_utc")
+    if not isinstance(record.get("supervisor_pid"), int):
+        return False
+    if not isinstance(beat, (int, float)):
+        return False
+    age = time.time() - beat
+    return 0 <= age <= max_age
+
+
 def tick(root: Path, trial_id: str, token: str) -> bool:
     """Watchdog keeps a bounded heartbeat; True => continue watching."""
     with state_lock(root):
@@ -254,6 +268,9 @@ def tick(root: Path, trial_id: str, token: str) -> bool:
             return False
         if elapsed(record):
             _recover_locked(root, record, "deadline")
+            return False
+        if record.get("supervisor_pid") is not None and not _supervisor_fresh(record):
+            _recover_locked(root, record, "supervisor-lost")
             return False
         record["heartbeat_utc"] = time.time()
         atomic_json(journal_path(root), record)
