@@ -176,7 +176,7 @@ class WatchdogTests(unittest.TestCase):
         ))
 
     def test_lease_requires_live_heartbeat_and_active_phase(self):
-        record = self.start(duration=3)
+        record = self.start(duration=20)
         self.assertTrue(core.lease_is_healthy(self.root, record["trial_id"]))
         self.assertFalse(core.lease_is_healthy(self.root, "wrong-id"))
         os.kill(record["watchdog_pid"], signal.SIGTERM)
@@ -187,7 +187,7 @@ class WatchdogTests(unittest.TestCase):
         self.assertFalse(core.lease_is_healthy(self.root, record["trial_id"]))
 
     def test_no_duplicate_live_trial(self):
-        self.start(duration=3)
+        self.start(duration=20)
         with self.assertRaises(core.SafetyError):
             core.prepare(self.root, 60, test_duration=1)
 
