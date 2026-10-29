@@ -41,6 +41,11 @@ def run_start(root: Path, height: int, duration: float | None) -> int:
             "Stage-1 prototype only runs with ATB_WATCHDOG_TEST_MODE=1; "
             "no Windows shell integration exists"
         )
+    prior, reconciled = core.reconcile_stale(root)
+    if reconciled:
+        raise core.SafetyError(
+            "Previous abandoned trial was reconciled; inspect restored state "
+            "and explicitly invoke start again. No automatic rearm.")
     record = core.prepare(root, height, test_duration=duration)
     try:
         # The recovery supervisor starts and positively acknowledges BEFORE
@@ -104,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         description="Experimental MOCK-ONLY 120-second rollback watchdog"
     )
     sub = parser.add_subparsers(dest="action", required=True)
-    for action in ("init", "start", "watch", "status", "recover"):
+    for action in ("init", "start", "watch", "status", "recover", "reconcile"):
         cmd = sub.add_parser(action)
         cmd.add_argument("--state-dir", required=True, type=Path)
         if action == "init":
@@ -133,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
                 print_state(core.load(root))
         elif args.action == "recover":
             print_state(core.recover(root, "manual"))
+        elif args.action == "reconcile":
+            record, was_recovered = core.reconcile_stale(root)
+            if record is None:
+                print("No trial journal exists; no action.")
+            else:
+                print_state(record)
+                print(f"Reconciliation attempted: {was_recovered}")
     except (core.SafetyError, OSError, ValueError) as exc:
         print(f"FAIL CLOSED: {exc}", file=sys.stderr)
         return 2
