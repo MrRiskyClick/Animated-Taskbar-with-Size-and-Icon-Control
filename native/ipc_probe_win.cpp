@@ -10,6 +10,7 @@
 #include <bcrypt.h>
 #include "native/ipc_protocol.hpp"
 #include "native/ipc_timeout_win.hpp"
+#include "src/core/diagnostic_ipc_win.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -164,6 +165,31 @@ std::wstring PipeName(const char* suffix) {
     return L"\\\\.\\pipe\\ATB-MOCK-IPC-" + std::wstring(value.begin(), value.end());
 }
 
+// Diagnostic-only peer observation server. No secret, no authorization, no
+// recovery control. Deliberately separate from the HMAC authentication mode.
+int ServeReadOnly(const std::wstring& pipeName, bool badReply = false) {
+    PSECURITY_DESCRIPTOR descriptor = nullptr;
+    if (!UserOnlySecurity(descriptor)) return 2;
+    SECURITY_ATTRIBUTES attrs{};
+    attrs.nLength = sizeof(attrs);
+    attrs.lpSecurityDescriptor = descriptor;
+    attrs.bInheritHandle = FALSE;
+    Handle pipe(CreateNamedPipeW(pipeName.c_str(),
+        PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
+        PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
+        1, 512, 512, 0, &attrs));
+    LocalFree(descriptor);
+    if (!pipe.valid()) return 2;
+    atb_transport::Deadline deadline;
+    if (!atb_transport::Connect(pipe.get(), deadline)) return 3;
+    std::array<std::uint8_t, 8> hello{};
+    if (!atb_transport::ReadExact(pipe.get(), hello, deadline) ||
+        hello != atb_readonly::kHello || !SameUserAndSession(pipe.get())) return 3;
+    auto response = atb_readonly::kReply;
+    if (badReply) response[0] ^= 0xff;
+    return atb_transport::WriteExact(pipe.get(), response, deadline) ? 0 : 3;
+}
+
 int Serve(const std::wstring& pipeName, bool stallAfterHello = false) {
     Secret secret{};
     if (!ReadSecret(secret)) return 2;
@@ -258,6 +284,8 @@ int main(int argc, char** argv) {
     if (pipe.empty()) return 2;
     const std::string mode(argv[1]);
     if (mode == "server" && argc == 3) return Serve(pipe);
+    if (mode == "observer-server" && argc == 3) return ServeReadOnly(pipe);
+    if (mode == "observer-server-bad" && argc == 3) return ServeReadOnly(pipe, true);
     if (mode == "server-stall" && argc == 3) return Serve(pipe, true);
     if (argc != 4) return 2;
     char* end = nullptr;
