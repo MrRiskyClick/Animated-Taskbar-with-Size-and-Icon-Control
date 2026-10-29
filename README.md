@@ -62,3 +62,7 @@ A narrow [Windhawk CLI adapter](watchdog/windhawk_control.py) is under developme
 ## Current Stage 1b diagnostic bridge
 
 The watchdog now publishes a versioned, **read-only** observer lease during mock trials, and a native C++17 parser rejects stale, expired, malformed or mismatched records. The Windhawk diagnostic skeleton can observe a configured lease path and trial ID without altering the Windows shell. `python scripts/bundle_windhawk.py` generates a single Windhawk source file in `dist/` for controlled compilation tests. **This is not an authenticated authorization channel or a completed two-minute restore system**; native shell changes remain blocked until real-state rollback and watchdog-loss recovery are proven.
+
+## Stage 1c: redundant mock recovery
+
+The watchdog prototype now launches an independent supervisor before any mock mutation. Either process can restore the simulated baseline after the other stops sending heartbeats. A future launch can reconcile a stale journal while requiring a separate explicit command to rearm. These are mock-only recovery mechanisms, not an installed taskbar rollback solution. See [Safety](docs/SAFETY.md) and [Watchdog docs](watchdog/README.md).
