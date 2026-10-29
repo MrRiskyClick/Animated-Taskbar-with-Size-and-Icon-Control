@@ -74,4 +74,15 @@ The Stage 1 safety gate is still **not passed**. Development cannot proceed to l
 - [ ] Tested automatic Windhawk disable on user's installed version; no auto install or enable.
 - [ ] Real taskbar change safety/reversibility demonstration.
 
-**These completed boxes are for a non-mutating diagnostic, not completion of the Stage 1 safety gate.** 
+**These completed boxes are for a non-mutating diagnostic, not completion of the Stage 1 safety gate.**
+
+## Stage 1c — redundant mock failure recovery
+
+- [x] Independent secondary supervisor starts and positively acknowledges before the mock change.
+- [x] Two-way heartbeat monitor and compare-before-restore when either watchdog or supervisor stops updating the journal.
+- [x] Kill-either-process tests added to Windows/Linux CI.
+- [ ] Startup recovery after reboot or *both* processes failing.
+- [ ] Authenticated IPC (current journal and command-line token are test-only).
+- [ ] Native Windows property rollback and Windhawk per-mod disable confirmed in the installed version.
+
+**Stage 1 continues to block all live taskbar modifications.**
