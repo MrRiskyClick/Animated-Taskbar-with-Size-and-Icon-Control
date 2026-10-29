@@ -81,3 +81,9 @@ A **manual Windows System Restore point** is a valuable third-layer escape hatch
 - Failure injection on a live Windows Explorer shell, Windows build compatibility allowlist and complete rollback verification.
 
 Even with tests passing, **Stage 1 full safety gate is OPEN**. No source file may add active native taskbar mutation until the missing items are implemented and tested.
+
+## Stage 1c — independent mock recovery supervisor
+
+The mock harness now arms an **independent recovery supervisor before it launches the watchdog and before it changes the mock target**. The supervisor monitors the watchdog journal heartbeat and 120-second deadline. The watchdog monitors the supervisor heartbeat in return. If either process is killed or stops sending heartbeats, the surviving process attempts compare-before-restore of the mock original value, revokes the lease observation, and prevents automatic rearming. Tests intentionally terminate each of the two processes independently on Windows and Linux.
+
+**Not a production guarantee:** If both processes die or Windows loses power, no process is left to perform the mock rollback until a separate startup reconciliation mechanism runs. Both processes still share a writable mock journal and pass a trial token in command-line arguments, which is NOT authenticated IPC or appropriate secret handling. Native Explorer layout changes, true Windows state snapshots, actual Windhawk disable and watchdog installation are **not implemented**. The Stage 1 safety gate remains OPEN.
