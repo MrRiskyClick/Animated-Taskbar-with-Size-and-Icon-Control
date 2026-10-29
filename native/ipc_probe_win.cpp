@@ -92,7 +92,7 @@ bool VerifyServerIdentity(HANDLE pipe, DWORD expectedPid) {
     if (!TokenUserSid(serverToken.get(), serverBytes, serverSid) ||
         !TokenUserSid(ourToken.get(), ourBytes, ourSid) ||
         !EqualSid(serverSid, ourSid)) return false;
-    std::wstring serverImage(32768, L'\\0');
+    std::wstring serverImage(32768, L'\0');
     DWORD chars = static_cast<DWORD>(serverImage.size());
     if (!QueryFullProcessImageNameW(server.get(), 0, serverImage.data(), &chars) ||
         !chars) return false;
@@ -250,7 +250,7 @@ int Client(const std::wstring& pipeName, bool captureProof, bool replayProof,
 
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 4) {
-        std::cerr << "Usage: ipc_probe_win.exe server|server-stall|client|client-capture|client-replay <pipe-suffix> [expected-server-pid]\\n";
+        std::cerr << "Usage: ipc_probe_win.exe server|server-stall|client|client-capture|client-replay <pipe-suffix> [expected-server-pid]\n";
         return 2;
     }
     const std::wstring pipe = PipeName(argv[2]);
