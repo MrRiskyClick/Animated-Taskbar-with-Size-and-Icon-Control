@@ -1,0 +1,60 @@
+# Safety and rollback specification — mandatory before shell mutation
+
+## Hard requirement
+
+When the experimental mod is enabled, its active changes **automatically expire after exactly 120 seconds (monotonic deadline)**. There is no indefinite "keep changes" action in the initial testing phase. Leaving the mod listed as enabled inside Windhawk is not equivalent to continuing the experiment; after expiration the mod must be **inert**, and it must not reapply after restart unless explicitly armed for a new trial.
+
+A countdown **inside Explorer alone is unsafe**. It cannot fire if Explorer hangs/crashes. A proper rollback requires an independent watchdog that monitors an external deadline and persisted trial state.
+
+## Two-layer recovery architecture (to implement)
+
+### Layer 1: mod-local guard
+
+- On load, do not mutate anything until successful handshake with watchdog and receipt of a single-use trial ID.
+- Validate supported Windows build, symbols, monitor topology and reversible operations.
+- Register inverse operation in a journal **before** each modification.
+- On expiry, mod unload, settings change, exception or explicit abort: stop applying changes and revert in reverse order.
+- Avoid detached threads accessing unloaded code; Windhawk lifecycle/re-entry and Explorer restart must be tested.
+
+### Layer 2: independent watchdog
+
+- Launch/arm **outside `explorer.exe`** before the mod can apply changes. Heartbeat alone is not sufficient; persist `deadline_utc` and a monotonic/signed or elapsed-time equivalent with boot identity.
+- Journal in a per-user durable path with atomic writes and restricted permissions: baseline settings + exact scope and expected post-values, operation IDs, trial ID, state and rollback results. Protect against stale/corrupt journal. Do not assume arbitrary process-local XAML pointers survive Explorer restart.
+- At the 120s deadline, if heartbeat missing, if Explorer dies, or on watchdog restart with an expired/unresolved trial: force the feature into a **disabled/unarmed** state using a *verified documented control channel*. Test actual Windhawk disable handling: no presumed CLI/API.
+- Revert persisted OS settings and work-area effects only if they still match expected trial-owned values; prevent clobbering concurrent user changes.
+- An Explorer restart can reinitialize transient XAML/layout state **after** disabling reapplication, but may disrupt apps and is an escalation path, not guaranteed comprehensive restoration.
+- If the independent watchdog itself terminates, safe operation must be fail-closed; the mod must detect lost watchdog/expired lease and self-revert if responsive. If both watchdog and Explorer are suspended, no software-only 120-second guarantee is possible; document residual risks.
+
+## Snapshot scope: possible vs impossible
+
+| State | Strategy | Confidence |
+|---|---|---|
+| Our mod's own settings, hooks, injected XAML style and transforms | Record values/ownership; undo in reverse or unload hooks | Possible, requires Windows build validation |
+| Our changes to taskbar height, monitor work area, alignment, auto-hide | Persist **original** values, compare before restore, force shell recalculation | Feasible in principle; must test |
+| Pinned items, taskbar grouping, system tray user prefs | **Do not touch** these in experiments; do not promise to snapshot all shell state | Avoid mutation |
+| Arbitrary Windows internals, other third-party mod changes and open application window state | No complete reliable snapshot API; may be affected by shell restart | Not guaranteed |
+
+## Transaction journal state machine
+
+```text
+IDLE -> PREPARED (snapshot captured) -> ARMED (watchdog confirms lease)
+  -> APPLYING -> ACTIVE -> REVERTING -> REVERTED -> IDLE
+                         └─(error/TTL)-> REVERTING
+PREPARED/ARMED after restart => ABORT/ROLLBACK, never auto-resume
+Unknown/corrupt state => block mutations, enter SAFE MODE and report
+```
+
+Use absolute journal status transitions with durable writes. Non-reentrant rollback. Idempotent inverse operations. Restore only verified trial-owned values. Preserve failure logs for diagnostics.
+
+## Acceptance before Stage 3
+
+- 120-second timer applies to **all** active experimental changes.
+- Independent process stays alive after Explorer failure and can disable reapplication.
+- Demonstrated rollback after Explorer crash, Explorer hang, watchdog crash/restart, logout and multi-monitor change, as technically possible.
+- Test manual rollback on a separate test Windows session; visible taskbar restored, correct work area, original system tray, pinned applications unchanged.
+- No unapproved scheduled startup task/service and no permanent registry patch.
+- If unable to reliably stop reapplication, **do not ship active shell mutation**. Manual Windhawk disable/restart is only an emergency instruction, not a substitute for the 120s safeguard.
+
+## Stage 0 status
+
+Only a **non-mutating diagnostic prototype** and simulated rollback unit tests may ship at this point. They are explicitly not a production watchdog or comprehensive Windows savestate.
