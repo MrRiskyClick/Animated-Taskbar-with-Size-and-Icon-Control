@@ -7,6 +7,7 @@
 #include "native/mock_trial_core.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <cwchar>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -70,7 +71,7 @@ std::wstring AllowedRoot(const char* raw) {
         name.find(L'/') != std::wstring::npos) return {};
     for (wchar_t ch : name)
         if (!((ch >= L'a' && ch <= L'z') ||
-              (ch >= L'0' && ch <= L'9') || ch == L'-')) return {};
+              (ch >= L'0' && ch <= L'9') || ch == L'-' || ch == L'_')) return {};
     return path;
 }
 bool ValidDirectory(const std::wstring& root) {
