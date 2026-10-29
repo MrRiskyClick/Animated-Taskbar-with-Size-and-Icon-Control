@@ -30,3 +30,13 @@ Decision gate: prove native task-list can exist/appear above the work-area bound
 - What safe monitor-aware strategy gives click-through over arbitrary underlying apps without sacrificing tray and task-list interaction?
 - How do concurrent Windhawk size/styler/animation mods interact? Conflict detector vs explicit user instruction to disable others?
 - What licensing model will be selected when upstream GPLv3 material is actually incorporated?
+
+## ADR-006 — Source animation is Ph0en1x-dev, independent theme mods coexist
+
+**Accepted product requirement; feasibility and licensing pending.** Ph0en1x-dev Taskbar Dock Animation's magnification and ease should serve as the behavioral starting point. The taskbar project must be able to run with the user's existing Windhawk theme stack: m417z Taskbar Styler, Start Menu Styler, Notification Center Styler, Taskbar tray system icon tweaks and sizing mod, subject to measured technical limits.
+
+**Decision:** Integrate only the necessary animation patterns into the new renderer after GPL/source review. Do not bundle whole unrelated mods or silently disable them. Never stack two animation engines on the same native controls; if overlap is unavoidable, warn and require explicit choice for that one feature. Continue to support the other theme mods. Record tests in [COMPATIBILITY.md](COMPATIBILITY.md).
+
+## ADR-007 — System Restore is tertiary recovery, not automatic rollback
+
+**Accepted:** The developer maintains a manual pre-test Windows System Restore point. This may recover system files/settings if Explorer or Windows won't start, via WinRE, but is not a guaranteed whole-PC snapshot or replacement for a tested 120-second watchdog. Don't publish the developer's personal restore point metadata in this public repository. Emergency steps: [EMERGENCY_RECOVERY.md](EMERGENCY_RECOVERY.md).
