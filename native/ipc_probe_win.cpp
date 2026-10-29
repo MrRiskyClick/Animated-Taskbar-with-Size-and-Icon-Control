@@ -9,11 +9,14 @@
 #include <sddl.h>
 #include <bcrypt.h>
 #include "native/ipc_protocol.hpp"
+#include "native/ipc_timeout_win.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <cwchar>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -65,6 +68,41 @@ bool SameUserAndSession(HANDLE pipe) {
     return result;
 }
 
+// Client-side peer check: inspect the actual process behind the pipe handle.
+// This diagnostic expects server and client to be the SAME test executable;
+// the real watchdog will need an independently pinned/signed binary identity.
+bool VerifyServerIdentity(HANDLE pipe, DWORD expectedPid) {
+    ULONG serverPid = 0;
+    if (!GetNamedPipeServerProcessId(pipe, &serverPid) ||
+        serverPid == 0 || serverPid != expectedPid) return false;
+    Handle server(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, serverPid));
+    if (!server.valid()) return false;
+    DWORD serverSession = 0, ourSession = 0;
+    if (!ProcessIdToSessionId(serverPid, &serverSession) ||
+        !ProcessIdToSessionId(GetCurrentProcessId(), &ourSession) ||
+        serverSession != ourSession) return false;
+    DWORD exitCode = 0;
+    if (!GetExitCodeProcess(server.get(), &exitCode) || exitCode != STILL_ACTIVE)
+        return false;
+    Handle serverToken, ourToken;
+    if (!OpenProcessToken(server.get(), TOKEN_QUERY, &serverToken.h) ||
+        !OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &ourToken.h)) return false;
+    std::vector<BYTE> serverBytes, ourBytes;
+    PSID serverSid = nullptr, ourSid = nullptr;
+    if (!TokenUserSid(serverToken.get(), serverBytes, serverSid) ||
+        !TokenUserSid(ourToken.get(), ourBytes, ourSid) ||
+        !EqualSid(serverSid, ourSid)) return false;
+    std::wstring serverImage(32768, L'\0');
+    DWORD chars = static_cast<DWORD>(serverImage.size());
+    if (!QueryFullProcessImageNameW(server.get(), 0, serverImage.data(), &chars) ||
+        !chars) return false;
+    serverImage.resize(chars);
+    wchar_t ownImage[32768]{};
+    DWORD ownLength = GetModuleFileNameW(nullptr, ownImage, 32768);
+    return ownLength != 0 && ownLength < 32768 &&
+           _wcsicmp(serverImage.c_str(), ownImage) == 0;
+}
+
 bool UserOnlySecurity(PSECURITY_DESCRIPTOR& descriptor) {
     descriptor = nullptr;
     Handle token;
@@ -111,16 +149,6 @@ bool HmacSha256(const Secret& secret, const Challenge& challenge,
     return ok;
 }
 
-template <std::size_t N> bool ReadExact(HANDLE pipe, std::array<std::uint8_t, N>& value) {
-    DWORD got = 0;
-    return ReadFile(pipe, value.data(), static_cast<DWORD>(value.size()), &got, nullptr) &&
-           got == value.size();
-}
-template <std::size_t N> bool WriteExact(HANDLE pipe, const std::array<std::uint8_t, N>& value) {
-    DWORD sent = 0;
-    return WriteFile(pipe, value.data(), static_cast<DWORD>(value.size()), &sent, nullptr) &&
-           sent == value.size();
-}
 
 bool ReadSecret(Secret& secret) {
     std::string hex;
@@ -136,7 +164,7 @@ std::wstring PipeName(const char* suffix) {
     return L"\\\\.\\pipe\\ATB-MOCK-IPC-" + std::wstring(value.begin(), value.end());
 }
 
-int Serve(const std::wstring& pipeName) {
+int Serve(const std::wstring& pipeName, bool stallAfterHello = false) {
     Secret secret{};
     if (!ReadSecret(secret)) return 2;
     PSECURITY_DESCRIPTOR descriptor = nullptr;
@@ -145,15 +173,18 @@ int Serve(const std::wstring& pipeName) {
     attrs.nLength = sizeof(attrs);
     attrs.lpSecurityDescriptor = descriptor;
     attrs.bInheritHandle = FALSE;
-    Handle pipe(CreateNamedPipeW(pipeName.c_str(), PIPE_ACCESS_DUPLEX,
+    Handle pipe(CreateNamedPipeW(pipeName.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
         PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
         1, 512, 512, 0, &attrs));
     LocalFree(descriptor);
     if (!pipe.valid()) return 2;
-    if (!ConnectNamedPipe(pipe.get(), nullptr) && GetLastError() != ERROR_PIPE_CONNECTED) return 2;
+    atb_transport::Deadline deadline;
+    if (!atb_transport::Connect(pipe.get(), deadline)) return 2;
     std::array<std::uint8_t, kHelloBytes> hello{};
-    if (!ReadExact(pipe.get(), hello) || hello != kHello || !SameUserAndSession(pipe.get()))
+    if (!atb_transport::ReadExact(pipe.get(), hello, deadline) || hello != kHello ||
+        !SameUserAndSession(pipe.get()))
         return 3;
+    if (stallAfterHello) { Sleep(6000); return 3; }
     std::array<std::uint8_t, 32> nonce{};
     std::array<std::uint8_t, 16> trial{};
     if (!RandomBytes(nonce.data(), static_cast<ULONG>(nonce.size())) ||
@@ -161,43 +192,41 @@ int Serve(const std::wstring& pipeName) {
     const Challenge challenge = MakeChallenge(nonce, trial, GetTickCount64());
     Secret serverTag{};
     if (!HmacSha256(secret, challenge, "ATB-STAGE1E-SERVER-v1", serverTag) ||
-        !WriteExact(pipe.get(), challenge) || !WriteExact(pipe.get(), serverTag)) return 3;
+        !atb_transport::WriteExact(pipe.get(), challenge, deadline) ||
+        !atb_transport::WriteExact(pipe.get(), serverTag, deadline)) return 3;
     Response response{};
-    if (!ReadExact(pipe.get(), response) ||
+    if (!atb_transport::ReadExact(pipe.get(), response, deadline) ||
         !ValidateChallenge(challenge, GetTickCount64())) return 3;
     Secret expected{};
     if (!HmacSha256(secret, challenge, "ATB-STAGE1E-CLIENT-v1", expected)) return 3;
     const bool accepted = CheckResponse(response, expected);
     constexpr std::array<std::uint8_t, 8> ok{{'A','T','B','O','K','0','0','1'}};
     constexpr std::array<std::uint8_t, 8> no{{'A','T','B','N','O','0','0','1'}};
-    if (!WriteExact(pipe.get(), accepted ? ok : no)) return 3;
-    FlushFileBuffers(pipe.get());
+    if (!atb_transport::WriteExact(pipe.get(), accepted ? ok : no, deadline)) return 3;
+    // Do not call synchronous FlushFileBuffers: it can block on a hung peer.
     std::cout << (accepted ? "AUTHENTICATED-MOCK-ONLY\n" : "AUTH-REJECTED\n");
     return accepted ? 0 : 3;
 }
 
-int Client(const std::wstring& pipeName, bool captureProof, bool replayProof) {
+int Client(const std::wstring& pipeName, bool captureProof, bool replayProof,
+           DWORD expectedServerPid, bool stallAfterConnect = false) {
     Secret material{};
     if (!ReadSecret(material)) return 2;
     Secret replayTag{};
     if (replayProof && !ReadSecret(replayTag)) return 2;
-    Handle pipe(INVALID_HANDLE_VALUE);
-    for (int i = 0; i < 50; ++i) {
-        pipe.h = CreateFileW(pipeName.c_str(), GENERIC_READ | GENERIC_WRITE,
-                             0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (pipe.valid()) break;
-        if (GetLastError() != ERROR_FILE_NOT_FOUND && GetLastError() != ERROR_PIPE_BUSY) return 2;
-        Sleep(50);
-    }
+    atb_transport::Deadline deadline;
+    Handle pipe(atb_transport::OpenClient(pipeName, deadline));
     if (!pipe.valid()) return 2;
+    if (!VerifyServerIdentity(pipe.get(), expectedServerPid)) return 3;
+    if (stallAfterConnect) { Sleep(6000); return 3; }
     DWORD mode = PIPE_READMODE_MESSAGE;
     if (!SetNamedPipeHandleState(pipe.get(), &mode, nullptr, nullptr) ||
-        !WriteExact(pipe.get(), kHello)) return 3;
+        !atb_transport::WriteExact(pipe.get(), kHello, deadline)) return 3;
     Challenge challenge{};
-    if (!ReadExact(pipe.get(), challenge) || !ValidateChallenge(challenge, GetTickCount64()))
+    if (!atb_transport::ReadExact(pipe.get(), challenge, deadline) || !ValidateChallenge(challenge, GetTickCount64()))
         return 3;
     Secret receivedServerTag{}, expectedServerTag{};
-    if (!ReadExact(pipe.get(), receivedServerTag) ||
+    if (!atb_transport::ReadExact(pipe.get(), receivedServerTag, deadline) ||
         !HmacSha256(material, challenge, "ATB-STAGE1E-SERVER-v1", expectedServerTag) ||
         !FixedEqual(receivedServerTag.data(), expectedServerTag.data(), 32)) return 3;
     Secret proof{};
@@ -207,9 +236,9 @@ int Client(const std::wstring& pipeName, bool captureProof, bool replayProof) {
         return 3;
     }
     const auto response = MakeResponse(proof);
-    if (!WriteExact(pipe.get(), response)) return 3;
+    if (!atb_transport::WriteExact(pipe.get(), response, deadline)) return 3;
     std::array<std::uint8_t, 8> acknowledgment{};
-    if (!ReadExact(pipe.get(), acknowledgment)) return 3;
+    if (!atb_transport::ReadExact(pipe.get(), acknowledgment, deadline)) return 3;
     const std::array<std::uint8_t, 8> ok{{'A','T','B','O','K','0','0','1'}};
     if (captureProof) {
         auto encoded = HexEncode(proof);
@@ -221,16 +250,22 @@ int Client(const std::wstring& pipeName, bool captureProof, bool replayProof) {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::cerr << "Usage: ipc_probe_win.exe server|client|client-capture|client-replay <pipe-suffix>\n";
+    if (argc < 3 || argc > 4) {
+        std::cerr << "Usage: ipc_probe_win.exe server|server-stall|client|client-stall|client-capture|client-replay <pipe-suffix> [expected-server-pid]\n";
         return 2;
     }
     const std::wstring pipe = PipeName(argv[2]);
     if (pipe.empty()) return 2;
     const std::string mode(argv[1]);
-    if (mode == "server") return Serve(pipe);
-    if (mode == "client") return Client(pipe, false, false);
-    if (mode == "client-capture") return Client(pipe, true, false);
-    if (mode == "client-replay") return Client(pipe, false, true);
+    if (mode == "server" && argc == 3) return Serve(pipe);
+    if (mode == "server-stall" && argc == 3) return Serve(pipe, true);
+    if (argc != 4) return 2;
+    char* end = nullptr;
+    unsigned long pid = std::strtoul(argv[3], &end, 10);
+    if (!end || *end != '\0' || pid == 0 || pid > 0xffffffffUL) return 2;
+    if (mode == "client") return Client(pipe, false, false, static_cast<DWORD>(pid));
+    if (mode == "client-stall") return Client(pipe, false, false, static_cast<DWORD>(pid), true);
+    if (mode == "client-capture") return Client(pipe, true, false, static_cast<DWORD>(pid));
+    if (mode == "client-replay") return Client(pipe, false, true, static_cast<DWORD>(pid));
     return 2;
 }

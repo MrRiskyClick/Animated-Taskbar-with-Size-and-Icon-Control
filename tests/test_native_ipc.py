@@ -18,6 +18,7 @@ class NativeIpcTests(unittest.TestCase):
         self.key = secrets.token_hex(32)
         self.pipe_suffix = secrets.token_hex(12)
         self.servers = []
+        self.last_server_pid = None
 
     def tearDown(self):
         for server in self.servers:
@@ -31,8 +32,8 @@ class NativeIpcTests(unittest.TestCase):
             if server.stderr:
                 server.stderr.close()
 
-    def start_server(self):
-        server = subprocess.Popen([self.exe, "server", self.pipe_suffix],
+    def start_server(self, mode="server"):
+        server = subprocess.Popen([self.exe, mode, self.pipe_suffix],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.PIPE)
         assert server.stdin is not None
@@ -40,11 +41,13 @@ class NativeIpcTests(unittest.TestCase):
         server.stdin.flush()
         server.stdin.close()
         self.servers.append(server)
+        self.last_server_pid = server.pid
         return server
 
-    def client(self, mode="client", key=None, extra=""):
+    def client(self, mode="client", key=None, extra="", expected_pid=None):
         token = key if key is not None else self.key
-        return subprocess.run([self.exe, mode, self.pipe_suffix],
+        pid = expected_pid if expected_pid is not None else self.last_server_pid
+        return subprocess.run([self.exe, mode, self.pipe_suffix, str(pid)],
                               input=(token + "\n" + extra).encode("ascii"),
                               capture_output=True, timeout=12)
 
@@ -85,11 +88,36 @@ class NativeIpcTests(unittest.TestCase):
         self.assertNotEqual(bad.returncode, 0)
         # Server is still waiting for a valid client; teardown kills it.
 
+    def test_rejects_wrong_server_pid_even_with_correct_key(self):
+        server = self.start_server()
+        client = self.client(expected_pid=os.getpid())
+        self.assertNotEqual(client.returncode, 0)
+        # Server waits for an accepted client and times out independently.
+        self.assertNotEqual(server.wait(timeout=9), 0)
+
+    def test_silent_client_cannot_hold_server_indefinitely(self):
+        server = self.start_server()
+        client = self.client(mode="client-stall")
+        self.assertNotEqual(client.returncode, 0)
+        self.assertNotEqual(server.wait(timeout=9), 0)
+
+    def test_server_exits_when_no_client_connects(self):
+        server = self.start_server()
+        # The server's async ConnectNamedPipe must not wait indefinitely.
+        self.assertNotEqual(server.wait(timeout=9), 0)
+
+    def test_stalled_server_cannot_hang_authentication(self):
+        server = self.start_server(mode="server-stall")
+        client = self.client()
+        self.assertNotEqual(client.returncode, 0)
+        # The intentionally stalled server exits after sleeping in test mode.
+        self.assertNotEqual(server.wait(timeout=12), 0)
+
     def test_server_receives_no_key_through_command_line(self):
         server = self.start_server()
         self.assertNotIn(self.key, " ".join(server.args))
         client = self.client()
-        self.assertNotIn(self.key, " ".join([self.exe, "client", self.pipe_suffix]))
+        self.assertNotIn(self.key, " ".join([self.exe, "client", self.pipe_suffix, str(server.pid)]))
         self.assertEqual(client.returncode, 0)
         self.finish(server, 0)
 

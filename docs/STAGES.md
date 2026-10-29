@@ -106,3 +106,13 @@ Stage 1 is **NOT** complete; live taskbar modifications remain blocked.
 - [ ] Boot-time recovery, true Windows state restoration and safe automatic Windhawk disabling.
 
 No native hooks or taskbar-changing operations are present in the diagnostic. **Stage 1 safety gate is not passed.** See [native IPC README](../native/README.md).
+
+## Stage 1f — bounded native IPC diagnostics
+
+- [x] Standalone Windows named pipe uses a single bounded deadline and overlapped connect/read/write; timeouts cancel pending I/O and drain completions before releasing buffers.
+- [x] Client independently verifies server PID, user token SID, session and path of the **test executable**; the server still checks client PID/session/SID.
+- [x] Tests cover intentionally silent server, no client and wrong expected server PID.
+- [ ] Integrate authenticated Windows IPC into the actual read-only Windhawk diagnostic with safe per-session secret provisioning. Current standalone probe is **not** this integration.
+- [ ] Windows watchdog service/startup recovery, source-version-aware mod disable and real per-property Windows rollback.
+
+**No live taskbar mutation is permitted.** See [native/README.md](../native/README.md).
