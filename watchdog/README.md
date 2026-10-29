@@ -72,3 +72,9 @@ This eliminates the earlier *single process killed → always requires manual mo
 If **both** safety processes are terminated, no live process remains to restore the mock state at its deadline. The next invocation of `watchdog.cli start` now checks the persisted trial and, if expired or both heartbeat records are stale, restores the original mock value when safe. Importantly, it **refuses to begin a new trial in the same invocation**; a second explicit command is required. The `reconcile` command also inspects and attempts appropriate recovery without arming a new trial.
 
 This is not recovery at Windows boot or guaranteed recovery within 120 seconds if the machine is off, suspended, or both processes die. Production startup recovery, authenticated control, and real taskbar restoration remain mandatory.
+
+### Timing guarantees and test infrastructure
+
+Two-process *heartbeat loss* uses a 5-second grace interval to avoid mistaking a temporarily descheduled Windows process for a crash. This is **not** an extension of the trial deadline: the independent recorded trial still expires at 120 seconds. The read-only C++ lease observer retains its stricter 1.5-second stale-data check; it is diagnostic and is **not** permitted to authorize a Windows taskbar mutation.
+
+CI tests now use a longer simulated trial solely to accommodate launching two subprocesses on busy Windows runners. Once both have positively acknowledged readiness, tests deliberately advance the persisted deadline to verify immediate expiry logic. Corrupt-journal tests use a stopped mock fixture so that ordinary expiration cannot race the assertion. These tests validate deterministic mock behavior, not the timing of real Windows taskbar restoration.
