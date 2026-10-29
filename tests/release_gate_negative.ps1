@@ -19,12 +19,12 @@ try {
     }
     $fake | ConvertTo-Json | Set-Content -LiteralPath $fakePolicy -Encoding utf8
 
-    & $verifier -Candidate $fakeCandidate -PolicyFile $blocked -SourceCommit $SourceCommit
+    & pwsh -NoProfile -File $verifier -Candidate $fakeCandidate -PolicyFile $blocked -SourceCommit $SourceCommit
     if ($LASTEXITCODE -ne 3) { throw 'Unapproved policy was not blocked' }
-    & $verifier -Candidate $fakeCandidate -PolicyFile $fakePolicy -SourceCommit $SourceCommit
+    & pwsh -NoProfile -File $verifier -Candidate $fakeCandidate -PolicyFile $fakePolicy -SourceCommit $SourceCommit
     if ($LASTEXITCODE -ne 3) { throw 'Unsigned diagnostic was accepted under fake release approval' }
     Add-Content -LiteralPath $fakeCandidate -Value 'tampered'
-    & $verifier -Candidate $fakeCandidate -PolicyFile $fakePolicy -SourceCommit $SourceCommit
+    & pwsh -NoProfile -File $verifier -Candidate $fakeCandidate -PolicyFile $fakePolicy -SourceCommit $SourceCommit
     if ($LASTEXITCODE -ne 3) { throw 'Digest-mismatched candidate was accepted' }
     Write-Output 'All release-gate negative tests passed. No release was approved.'
 } finally {
