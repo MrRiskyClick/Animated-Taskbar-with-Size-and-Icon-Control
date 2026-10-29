@@ -54,3 +54,7 @@ See [Compatibility matrix](docs/COMPATIBILITY.md) and [Emergency recovery](docs/
 The development branch includes an independent subprocess watchdog and durable **mock-only** trial journal, with two-minute expiration by default. It uses separate processes and compare-before-restore to avoid clobbering externally edited mock settings. Windows + Linux mock CI tests pass.
 
 This does **not** yet recover the Windows taskbar, disable the Windhawk mod, restart after failure or guarantee restoration. Do not treat it as a production safety solution. See [watchdog/README.md](watchdog/README.md), [Stage 1 safety](docs/SAFETY.md) and [Stage 1 milestones](docs/STAGES.md).
+
+## Stage 1b — version-gated Windhawk control
+
+A narrow [Windhawk CLI adapter](watchdog/windhawk_control.py) is under development. It recognizes the supported Windhawk 2.x CLI, constructs a command to **disable only this project's mod**, refuses requests to change other mods, and requires explicit opt-in before invoking anything. The adapter is **not yet wired to watchdog expiry**, and CI uses a fake command runner only. See [version-specific integration plan](docs/WINDHAWK_INTEGRATION.md). Windhawk 1.x remains an unsolved independent-disable integration and is intentionally fail-closed. The active taskbar safety gate is still open.
