@@ -97,8 +97,12 @@ class NativeMockProcessTests(unittest.TestCase):
         trial = self.arm(seconds=3)
         self.worker(trial)
         self.cmd("apply", self.root, trial)
-        (self.root / "target.v1").write_text(
-            "ATB_NATIVE_MOCK_TARGET_V1\nheight=88\nEND\n", encoding="ascii")
+        # Third-party edit must be an atomic replacement, not an in-place
+        # truncate that the independent status reader could catch halfway.
+        outside = self.root / "target.external.tmp"
+        outside.write_text("ATB_NATIVE_MOCK_TARGET_V1\nheight=88\nEND\n",
+                           encoding="ascii")
+        os.replace(outside, self.root / "target.v1")
         self.until(lambda: "PHASE=CONFLICT" in self.status(), timeout=8)
         self.assertIn("height=88", self.target())
         self.cmd("arm", self.root, 66, 3, expected=3)
