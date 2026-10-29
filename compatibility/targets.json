@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "verification": "requirements-only; no Windows compatibility tests performed",
+  "targets": [
+    {
+      "id": "taskbar-dock-animation",
+      "name": "Taskbar Dock Animation",
+      "author": "Ph0en1x-dev",
+      "role": "animation_reference",
+      "source": "https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp",
+      "hosts": [
+        "explorer.exe"
+      ],
+      "overlap": "critical",
+      "policy": "Compare original animation to internal implementation. Do not enable two animation controllers for the same buttons without verified coordination."
+    },
+    {
+      "id": "windows-11-taskbar-styler",
+      "name": "Windows 11 Taskbar Styler",
+      "author": "m417z",
+      "role": "coexist",
+      "source": "https://github.com/ramensoftware/windhawk-mods/blob/main/mods/windows-11-taskbar-styler.wh.cpp",
+      "hosts": [
+        "explorer.exe"
+      ],
+      "overlap": "high",
+      "policy": "Preserve user's theme, background, pip styles and XAML resources."
+    },
+    {
+      "id": "windows-11-start-menu-styler",
+      "name": "Windows 11 Start Menu Styler",
+      "author": "m417z",
+      "role": "coexist",
+      "source": "https://github.com/ramensoftware/windhawk-mods/blob/main/mods/windows-11-start-menu-styler.wh.cpp",
+      "hosts": [
+        "StartMenuExperienceHost.exe",
+        "SearchHost.exe",
+        "SearchApp.exe"
+      ],
+      "overlap": "indirect",
+      "policy": "Preserve native Start/search popups and positioning while retaining user styling."
+    },
+    {
+      "id": "windows-11-notification-center-styler",
+      "name": "Windows 11 Notification Center Styler",
+      "author": "m417z",
+      "role": "coexist",
+      "source": "https://github.com/ramensoftware/windhawk-mods/blob/main/mods/windows-11-notification-center-styler.wh.cpp",
+      "hosts": [
+        "ShellExperienceHost.exe",
+        "ShellHost.exe"
+      ],
+      "overlap": "indirect",
+      "policy": "Preserve panel styling, clock/calendar/tray click actions and focus."
+    },
+    {
+      "id": "taskbar-tray-system-icon-tweaks",
+      "name": "Taskbar tray system icon tweaks",
+      "author": "m417z",
+      "role": "coexist",
+      "source": "https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-tray-system-icon-tweaks.wh.cpp",
+      "hosts": [
+        "explorer.exe"
+      ],
+      "overlap": "high",
+      "policy": "Existing mod owns system tray icon visibility, notification bell and Show Desktop presentation."
+    },
+    {
+      "id": "taskbar-icon-size",
+      "name": "Taskbar height and icon size",
+      "author": "m417z",
+      "role": "geometry_reference_and_coexistence",
+      "source": "https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-icon-size.wh.cpp",
+      "hosts": [
+        "explorer.exe"
+      ],
+      "overlap": "critical",
+      "policy": "Respect existing compact taskbar dimensions; require explicit migration if geometry hooks cannot coexist."
+    }
+  ]
+}
