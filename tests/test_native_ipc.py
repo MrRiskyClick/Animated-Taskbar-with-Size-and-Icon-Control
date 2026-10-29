@@ -95,6 +95,12 @@ class NativeIpcTests(unittest.TestCase):
         # Server waits for an accepted client and times out independently.
         self.assertNotEqual(server.wait(timeout=9), 0)
 
+    def test_silent_client_cannot_hold_server_indefinitely(self):
+        server = self.start_server()
+        client = self.client(mode="client-stall")
+        self.assertNotEqual(client.returncode, 0)
+        self.assertNotEqual(server.wait(timeout=9), 0)
+
     def test_server_exits_when_no_client_connects(self):
         server = self.start_server()
         # The server's async ConnectNamedPipe must not wait indefinitely.
