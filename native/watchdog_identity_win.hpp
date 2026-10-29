@@ -123,9 +123,9 @@ inline bool AuthenticodeValid(const std::wstring& path) {
     trust.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL;
     trust.dwUIContext = WTD_UICONTEXT_EXECUTE;
     GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-    const LONG status = WinVerifyTrust(INVALID_HANDLE_VALUE, &action, &trust);
+    const LONG status = WinVerifyTrust(nullptr, &action, &trust);
     trust.dwStateAction = WTD_STATEACTION_CLOSE;
-    WinVerifyTrust(INVALID_HANDLE_VALUE, &action, &trust);
+    WinVerifyTrust(nullptr, &action, &trust);
     // DO NOT use SUCCEEDED(status): WinVerifyTrust can return positive errors.
     return status == ERROR_SUCCESS;
 }
