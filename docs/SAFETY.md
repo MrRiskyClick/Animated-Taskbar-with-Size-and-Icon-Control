@@ -64,3 +64,20 @@ Only a **non-mutating diagnostic prototype** and simulated rollback unit tests m
 When restoring our experiment, never overwrite the saved settings of Windows 11 Taskbar Styler, Start Menu Styler, Notification Center Styler, Taskbar tray system icon tweaks, Taskbar height/icon-size or the original Ph0en1x-dev Dock Animation. Original theme/background/pip/clock/system tray settings are user-owned. If an unguarded hook collision would risk losing their state, stop the trial before applying changes.
 
 A **manual Windows System Restore point** is a valuable third-layer escape hatch (including via WinRE after a boot failure), but can be absent or fail and does not guarantee complete restoration of all mod data or personal files. It **must not be used to justify** disabling the independent 120-second expiration/recovery requirement. See [EMERGENCY_RECOVERY.md](EMERGENCY_RECOVERY.md).
+
+## Stage 1a implementation audit (2026-10-29)
+
+**Present on `feature/stage1-watchdog-prototype`:**
+- External subprocess watchdog with cross-process file lock and flushed, replace-based JSON journal.
+- 120-second production-default wall-clock + monotonic expiration (test-only shortened deadlines).
+- Acknowledged readiness before isolated mock modification; original and expected values persisted first.
+- Compare-before-restore mock rollback, conflict detection, idempotent recovery, fail-closed lease health helper, refusal to rearm unresolved or corrupt journals.
+- Windows and Linux CI tests passed for these mock-only paths.
+
+**NOT PRESENT / not allowed for production:**
+- Mod communication or automatic Windhawk disable.
+- Windows native shell state capture/inverse operations, taskbar/registry writes, actual taskbar recovery.
+- Watchdog crash auto-respawn and reboot reconciliation, real mod-side heartbeat enforcement, durable integrity hardening across arbitrary power loss.
+- Failure injection on a live Windows Explorer shell, Windows build compatibility allowlist and complete rollback verification.
+
+Even with tests passing, **Stage 1 full safety gate is OPEN**. No source file may add active native taskbar mutation until the missing items are implemented and tested.
