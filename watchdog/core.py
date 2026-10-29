@@ -12,13 +12,14 @@ from pathlib import Path
 import tempfile
 import time
 import uuid
+from watchdog import mock_credentials
 
 if os.name == "nt":
     import msvcrt
 else:
     import fcntl
 
-VERSION = 1
+VERSION = 2
 PRODUCTION_SECONDS = 120
 ACTIVE_PHASES = frozenset(("PREPARED", "READY", "ACTIVE", "RECOVERY_FAILED", "CONFLICT"))
 TERMINAL_PHASES = frozenset(("EXPIRED", "RECOVERED"))
@@ -111,7 +112,8 @@ def load(root: Path) -> dict:
         or not isinstance(record.get("deadline_mono"), (int, float))
         or not isinstance(record.get("created_mono"), (int, float))
         or not isinstance(record.get("trial_id"), str)
-        or not isinstance(record.get("token"), str)
+        or not isinstance(record.get("token_digest"), str)
+        or "token" in record
     ):
         raise SafetyError("Malformed journal; modifications blocked")
     return record
@@ -148,10 +150,11 @@ def prepare(root: Path, requested_height: int, *, test_duration: float | None = 
         if set(baseline) != {"height"} or type(baseline["height"]) is not int:
             raise SafetyError("Unexpected mock baseline; no change permitted")
         now_utc, now_mono = time.time(), time.monotonic()
+        token = mock_credentials.new_token()
         record = {
             "schema": VERSION,
             "trial_id": uuid.uuid4().hex,
-            "token": uuid.uuid4().hex,
+            "token_digest": mock_credentials.digest(token),
             "phase": "PREPARED",
             "baseline": baseline,
             "expected": {"height": requested_height},
@@ -164,7 +167,7 @@ def prepare(root: Path, requested_height: int, *, test_duration: float | None = 
             "result": None,
         }
         atomic_json(journal_path(root), record)
-        return record
+        return {**record, "token": token}
 
 
 def elapsed(record: dict, now_utc: float | None = None, now_mono: float | None = None) -> bool:
@@ -180,7 +183,7 @@ def elapsed(record: dict, now_utc: float | None = None, now_mono: float | None =
 def ready(root: Path, trial_id: str, token: str) -> bool:
     with state_lock(root):
         record = load(root)
-        if record["trial_id"] != trial_id or record["token"] != token:
+        if record["trial_id"] != trial_id or not mock_credentials.matches(token, record["token_digest"]):
             return False
         if record["phase"] != "PREPARED" or elapsed(record):
             return False
@@ -260,7 +263,7 @@ def tick(root: Path, trial_id: str, token: str) -> bool:
     """Watchdog keeps a bounded heartbeat; True => continue watching."""
     with state_lock(root):
         record = load(root)
-        if record["trial_id"] != trial_id or record["token"] != token:
+        if record["trial_id"] != trial_id or not mock_credentials.matches(token, record["token_digest"]):
             raise SafetyError("Watchdog trial identity mismatch")
         if record["phase"] in TERMINAL_PHASES or record["phase"] in ("CONFLICT", "RECOVERY_FAILED"):
             from watchdog import lease_protocol
