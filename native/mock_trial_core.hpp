@@ -148,7 +148,8 @@ inline bool Fresh(const Trial& t, std::uint64_t utc, std::uint64_t tick) {
 // Pure recovery contract: never overwrite a third-party value.
 inline bool Restore(Trial& t, unsigned& current, bool& changed) {
     changed = false;
-    if (t.phase == Phase::recovered || t.phase == Phase::conflict) return true;
+    if (t.phase == Phase::recovered) return true;
+    if (t.phase == Phase::conflict) return false;
     if (current == t.expected) {
         current = t.baseline;
         changed = true;
