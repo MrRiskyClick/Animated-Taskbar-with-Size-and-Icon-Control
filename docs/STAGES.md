@@ -135,3 +135,14 @@ This is **not production authenticated IPC**: no protected credential or challen
 - [ ] Native recovery service, reboot reconciliation, full original-state capture and confirmed per-property rollback.
 
 This milestone is **not** Windows taskbar recovery; see [WATCHDOG_IDENTITY.md](WATCHDOG_IDENTITY.md). The Stage 1 gate remains OPEN.
+
+## Stage 1i — signed release trust gate (diagnostic-only)
+
+- [x] An explicitly **blocked** release approval policy is committed with no approved source hash, executable SHA-256 or signer.
+- [x] Separate Windows release verifier requires exact source SHA, artifact name, file SHA-256, valid Authenticode chain and approved signing certificate thumbprint.
+- [x] Build manifest for the existing unsigned Windows identity **diagnostic** is always labeled untrusted, unsigned, undeployable and unapproved.
+- [x] Existing CI job tests unsigned/tampered/unapproved release rejection and archives a short-lived **UNTRUSTED** diagnostic artifact. Artifact upload is not deployment.
+- [ ] Approved signed Windows-native watchdog binary, secure reviewed signer, trusted release commit and protected approval process.
+- [ ] Authenticated live IPC, install/boot recovery, verified real-property reversals and Windows failure injection.
+
+This release-process milestone does **not** satisfy Stage 1 safety. See [RELEASE_TRUST.md](RELEASE_TRUST.md).
