@@ -1,0 +1,38 @@
+# Stage 1b — Windhawk version-specific control (research + isolated adapter)
+
+**No real Explorer taskbar modifications are authorized by this document or the current code.** This is a narrow, opt-in **disable-own-mod** adapter and simulated CI contract, not an installed recovery system.
+
+## Confirmed upstream
+
+- Windhawk **2.0 alpha** includes the official `windhawk-cli.exe` and supports `mod disable <id>` / `mod enable <id>`. Source: [CLI argument definitions](https://github.com/ramensoftware/windhawk/blob/main/src/windhawk-core/cli/src/args.rs), [mod dispatch](https://github.com/ramensoftware/windhawk/blob/main/src/windhawk-core/cli/src/commands/mods/mod.rs).
+- CLI supports `--version` and uses Clap's version flag; Rust workspace releases are versioned `2.0.0-alpha.x`.
+- Windhawk **1.7.x** does not provide that official CLI. In 2024 the maintainer documented a manual Ctrl+Win+W Safe Mode fallback. That is not acceptable as a timed per-mod recovery system and must not be used to reset all other mods.
+- Windhawk's 2.0 alpha is **not required** for the user right now; development does not automatically upgrade Windhawk.
+
+## Implemented (only a guarded adapter)
+
+`watchdog/windhawk_control.py` contains `WindhawkCli`. It:
+1. Requires an explicitly supplied existing `windhawk-cli.exe` file.
+2. Reads `--version` and allows only an identified Windhawk CLI 2.x response.
+3. Constructs `mod disable animated-taskbar-size-icon-control` **only**; requests to disable Taskbar Styler, Dock Animation or other mods are rejected.
+4. Defaults to **dry run**. Actual invocation requires a separate explicit environment authorization and caller's `execute=True`. It is *not wired to the watchdog expiry routine*, and no installed mods are affected.
+5. Fails on executable missing, unknown version, command timeout or nonzero exit code.
+6. Does **not** interpret process exit status as successful restoration of XAML taskbar properties; verification and mod-local restoration are future work.
+
+CI uses a fake runner. The tests check command identity, version, no unintended execution, reject unknown/1.x, missing executable and error exits.
+
+## Remaining blocking integration work
+
+- Determine which Windhawk edition/version the user has; do not infer from appearance.
+- Check CLI behavior and permissions with a **read-only** version/mod-status probe on a disposable Windows environment. Disable-own-mod test must be performed only after exact mod ID is installed and the external watchdog test is fully armed.
+- Build the mod-side fail-closed lease in C++: no taskbar mutation unless the watchdog is active, one-time trial token valid and not expired. Local code must stop applying and revert transient changes if heartbeat/lease is stale, even if watchdog dies.
+- Build a durable inverse-operation journal for **real, individually scoped** Windows taskbar modifications.
+- Provide safe startup reconciliation after reboot/watchdog process crash without silently enabling a broad system task/service.
+- For 1.7.x, assess whether a **mod-owned** in-process timer plus independent recovery can safely stop without writing Windhawk private registry state. If a reliable independent out-of-process disable is unavailable, the supported active test build must fail closed rather than claiming automatic rollback.
+- Verify existing Windhawk themes continue to work, in particular m417z Taskbar Styler, Start Menu Styler, Notification Center Styler and tray icon tweaks, plus Ph0en1x-style animation in our mod.
+
+## Manual fallback
+
+Windhawk toolkit keyboard shortcut `Ctrl+Win+W` supports Safe Mode. It can temporarily disable *all* Windhawk injection and therefore affects other customization mods, so it's **emergency-only**; our automatic timer must never invoke an indiscriminate global reset. See [emergency recovery](EMERGENCY_RECOVERY.md).
+
+**Stage 1 full safety gate remains OPEN.**
