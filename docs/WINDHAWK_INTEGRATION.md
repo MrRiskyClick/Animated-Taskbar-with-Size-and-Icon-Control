@@ -51,4 +51,10 @@ Windhawk only compiles a single C++ file: run `python scripts/bundle_windhawk.py
 
 The lease file is **public observation, not authenticated IPC**: any process with write access to the testing directory could forge it. The mod has no production key exchange, OS-level process verification or per-transaction ownership binding. The timed watcher and mod observe a file but are **not a trusted authorization handshake**.
 
-For Stage 1 production, implement authenticated and permission-scoped coordination with a native watchdog, enforce no mutation without lease+inverse journal, and prove fail-safe restoration after process crashes. The current `Wh_ModInit` does not modify taskbar state; a diagnostic-only timeout cannot be counted as rollback. 
+For Stage 1 production, implement authenticated and permission-scoped coordination with a native watchdog, enforce no mutation without lease+inverse journal, and prove fail-safe restoration after process crashes. The current `Wh_ModInit` does not modify taskbar state; a diagnostic-only timeout cannot be counted as rollback.
+
+## Stage 1d mock-credential implementation (supersedes earlier token-on-argv notes)
+
+As of Stage 1d, the mock controller sends a per-trial random credential to the watchdog and supervisor through their inherited stdin pipes. The mock journal persists the SHA-256 verifier rather than the credential itself; the raw token is not passed on either child command line. The schema version is now 2, and older unresolved journal records fail closed.
+
+**This does not authenticate a Windhawk/Explorer process.** The current read-only lease file is still forgeable by another process with write access to the mock directory, and there is no OS-backed peer identity or nonce exchange. Before active taskbar work, replace mock pipe/journal trust with an ACL-protected Windows named pipe and independently verified client process identity plus one-use challenge/response.
