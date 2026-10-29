@@ -43,3 +43,11 @@ Give the user a visually small native Windows 11 taskbar and an independent, tal
 ## Decision checkpoint
 
 Gate P1: If native app buttons cannot safely be rendered outside the parent HWND/XAML clip without losing interactions, document the failure. Consider a narrowly scoped native-host alternative or re-evaluate architecture; **do not** silently implement a fake taskbar and call it native.
+
+## First-class external mod compatibility (added requirement)
+
+Retain the appearance chosen with **m417z's Windows 11 Taskbar Styler, Start Menu Styler, Notification Center Styler, Taskbar tray system icon tweaks**, and compact taskbar sizing. The new animation must preserve the *feel and core capabilities of Ph0en1x-dev's Taskbar Dock Animation*, improving its clipping constraint rather than replacing its design with unrelated motion.
+
+These are **coexistence targets**, not permission to embed or modify other mods wholesale. If code is adapted, pin revision, review license, attribute, and ensure only one animation controller owns the native task-button transforms. Compatibility with the original simultaneously enabled Dock Animation is **not presumed**; fail closed or require the user to disable only that conflicting duplicate animation, while preserving the other theme mods.
+
+See [Compatibility test matrix](COMPATIBILITY.md) and [emergency recovery runbook](EMERGENCY_RECOVERY.md).
