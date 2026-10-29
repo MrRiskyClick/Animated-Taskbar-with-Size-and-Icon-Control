@@ -124,3 +124,14 @@ The existing Windhawk *diagnostic source* now contains an optional Windows named
 A native Windows test host uses exactly the same IPC header as the mod; tests exercise successful peer observation, wrong PID/path, altered response, absent server and malformed suffix. The one-file bundler now embeds both the existing lease reader and the new bounded IPC code, and a CI-only Windhawk API declaration shim checks C++ syntax on Windows. **The shim is NOT proof it compiles or loads in the real Windhawk environment.**
 
 This is **not production authenticated IPC**: no protected credential or challenge/response exists inside the Windhawk mod, the ACK is static, the executable path is not signature verification, and there is no trust established in the watchdog binary. Crucially, the diagnostic results **cannot authorize any taskbar modification**. Packaging, deployment, boot recovery, exact property restoration and Windhawk version-specific disabling are still blocking.
+
+## Stage 1h — native watchdog binary-identity policy (isolated)
+
+- [x] Add read-only Windows verifier requiring a 32-byte exact file SHA-256 pin and optional WinVerifyTrust Authenticode verification; **strict production policy requires both**.
+- [x] Add PID/creation-time comparison around process image-path and file verification, to detect stale/reused PID in diagnostic tests.
+- [x] Add Windows tests for modified file, wrong hash, malformed pin, unsigned CI artifact, missing path, mismatched PID and process start time.
+- [ ] Establish trusted binary build + signing pipeline, approved publisher certificate identity, pin rotation and process-memory integrity threat model.
+- [ ] Integrate with an authenticated, protected Windhawk-to-watchdog IPC channel; no settings-provided hash may act as a trust anchor.
+- [ ] Native recovery service, reboot reconciliation, full original-state capture and confirmed per-property rollback.
+
+This milestone is **not** Windows taskbar recovery; see [WATCHDOG_IDENTITY.md](WATCHDOG_IDENTITY.md). The Stage 1 gate remains OPEN.

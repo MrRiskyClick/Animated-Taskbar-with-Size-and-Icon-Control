@@ -69,3 +69,12 @@ jobs:
       - name: Syntax-check bundled Windhawk diagnostic against CI API shim
         if: runner.os == 'Windows'
         run: g++ -std=c++17 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -I. -include tests/windhawk_api_stub.hpp -fsyntax-only dist/animated-taskbar.wh.cpp
+
+      - name: Compile Stage-1h Windows executable identity policy (NO shell changes)
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. tests/binary_identity_probe_win.cpp -o binary_identity_probe_win.exe -lbcrypt -lwintrust -lcrypt32 -luuid
+      - name: Verify pinned SHA256, Authenticode fail-closed and process creation identity
+        if: runner.os == 'Windows'
+        env:
+          ATB_BINARY_IDENTITY_PROBE: "./binary_identity_probe_win.exe"
+        run: python -m unittest discover -s tests -p "test_binary_identity.py" -v
