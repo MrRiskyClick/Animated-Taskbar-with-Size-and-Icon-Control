@@ -30,3 +30,6 @@ try {
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
+# Each deliberate rejection returns 3. Clear the inherited LASTEXITCODE so
+# GitHub Actions does not mistake the *expected* last refusal for test failure.
+exit 0
