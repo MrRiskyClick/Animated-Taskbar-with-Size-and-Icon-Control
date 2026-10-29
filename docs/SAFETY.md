@@ -99,3 +99,9 @@ A separate supervisor starts before mock modifications and watches the watchdog 
 A new random 256-bit token is transferred to each mock safety subprocess via stdin rather than embedding it in its process argument list. The on-disk journal stores a SHA-256 digest, with constant-time token verification. Schema version 2 rejects stale version 1 journals rather than silently rearming. This reduces accidental credential disclosure and tests realistic child-process handoff.
 
 **Still not production authentication:** same-user writable state and an unauthenticated read-only lease file must never grant permission to alter Explorer. Production Windows IPC/ACL, peer identity, replay prevention, boot recovery, and real taskbar rollback remain open.
+
+## Stage 1e native IPC diagnostic (not a production safety channel)
+
+A standalone Windows-only named-pipe server/client prototype uses a random challenge, separate server/client HMAC proof domains, a restricted current-user DACL, remote-client rejection, and checks the kernel-reported client PID, session and impersonated user SID. Tokens are passed to standalone test subprocesses via stdin; no token is committed or added to the watchdog's journal. A portable wire-format contract can compile on Linux and Windows.
+
+**The native executable is not loaded into Explorer and is not called by the watchdog.** It performs no taskbar modifications. In particular, lack of bounded overlapped I/O, trusted executable verification, production secret provisioning, rollback of real shell state and boot recovery all remain release-blocking. Test source: [native/README.md](../native/README.md).

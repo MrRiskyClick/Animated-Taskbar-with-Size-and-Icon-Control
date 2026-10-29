@@ -97,3 +97,12 @@ The Stage 1 safety gate is still **not passed**. Development cannot proceed to l
 - [ ] Boot-time recovery, supported Windhawk auto-disable, real taskbar property restoration.
 
 Stage 1 is **NOT** complete; live taskbar modifications remain blocked.
+
+## Stage 1e — Windows-native authenticated IPC diagnostic
+
+- [x] Portable strict challenge/response wire contract, locally compiled on Linux using C++17.
+- [ ] Windows-native named-pipe probe: same-user SID, OS-reported client PID/session, local-only pipe ACL, mutual HMAC-SHA256 and random nonce/replay rejection. Implemented in test-only source; **GitHub Windows CI validation pending**.
+- [ ] Bounded overlapped pipe I/O, verified trusted process identity, secure secret bootstrap, real mod/watchdog handshake.
+- [ ] Boot-time recovery, true Windows state restoration and safe automatic Windhawk disabling.
+
+No native hooks or taskbar-changing operations are present in the diagnostic. **Stage 1 safety gate is not passed.** See [native IPC README](../native/README.md).
