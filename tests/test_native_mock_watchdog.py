@@ -100,12 +100,26 @@ class NativeMockProcessTests(unittest.TestCase):
         # Third-party edit must be an atomic replacement, not an in-place
         # truncate that the independent status reader could catch halfway.
         outside = self.root / "target.external.tmp"
-        outside.write_text("ATB_NATIVE_MOCK_TARGET_V1\nheight=88\nEND\n",
-                           encoding="ascii")
+        # Write raw bytes: Python text mode would convert LF -> CRLF
+        # on Windows, producing an invalid strict-format fixture.
+        outside.write_bytes(b"ATB_NATIVE_MOCK_TARGET_V1\nheight=88\nEND\n")
         os.replace(outside, self.root / "target.v1")
         self.until(lambda: "PHASE=CONFLICT" in self.status(), timeout=8)
         self.assertIn("height=88", self.target())
         self.cmd("arm", self.root, 66, 3, expected=3)
+
+    def test_malformed_external_target_is_not_overwritten(self):
+        trial = self.arm(seconds=6)
+        self.worker(trial)
+        self.cmd("apply", self.root, trial)
+        malformed = b"ATB_NATIVE_MOCK_TARGET_V1\r\nheight=88\r\nEND\r\n"
+        outside = self.root / "target.bad.tmp"
+        outside.write_bytes(malformed)
+        os.replace(outside, self.root / "target.v1")
+        # An unknown external format cannot be restored or silently assumed
+        # to equal either the baseline or the value installed by this trial.
+        self.cmd("recover", self.root, expected=3)
+        self.assertEqual((self.root / "target.v1").read_bytes(), malformed)
 
     def test_watchdog_killed_then_explicit_reconcile(self):
         trial = self.arm(seconds=6)
