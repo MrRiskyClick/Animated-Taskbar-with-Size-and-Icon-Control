@@ -130,13 +130,16 @@ class WatchdogTests(unittest.TestCase):
         self.assertNotEqual(result["phase"], "ACTIVE")
 
     def test_stale_or_corrupt_journal_blocks_apply(self):
-        self.start(duration=4)
+        # Corrupt an isolated on-disk mock fixture with NO active processes,
+        # so normal watchdog expiry cannot race this fail-closed test.
+        core.prepare(self.root, 78, test_duration=20)
         with core.state_lock(self.root):
+            core.atomic_json(core.target_path(self.root), {"height": 78})
             core.atomic_json(core.journal_path(self.root), {"broken": True})
         p = subprocess.run(
             [sys.executable, "-m", "watchdog.cli", "start",
              "--state-dir", str(self.root), "--height", "77",
-             "--test-duration", "1"], cwd=ROOT, env=ENV, capture_output=True,
+             "--test-duration", "20"], cwd=ROOT, env=ENV, capture_output=True,
             text=True, timeout=10
         )
         self.assertEqual(p.returncode, 2)
