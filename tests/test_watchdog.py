@@ -56,7 +56,7 @@ class WatchdogTests(unittest.TestCase):
                 pass
         self.folder.cleanup()
 
-    def start(self, *, duration=0.8, new_height=78):
+    def start(self, *, duration=3, new_height=78):
         response = cli("start", "--state-dir", self.root,
                        "--height", new_height, "--test-duration", duration)
         record = json.loads(response)
