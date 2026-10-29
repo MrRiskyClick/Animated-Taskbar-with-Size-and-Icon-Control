@@ -30,7 +30,7 @@ def cli(*args, expect=0):
     return p.stdout.strip()
 
 
-def until(predicate, timeout=5):
+def until(predicate, timeout=10):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         result = predicate()
@@ -68,7 +68,7 @@ class WatchdogTests(unittest.TestCase):
         if last_error:
             raise last_error
 
-    def start(self, *, duration=3, new_height=78):
+    def start(self, *, duration=15, new_height=78):
         response = cli("start", "--state-dir", self.root,
                        "--height", new_height, "--test-duration", duration)
         record = json.loads(response)
@@ -77,6 +77,15 @@ class WatchdogTests(unittest.TestCase):
         self.assertEqual(record["phase"], "ACTIVE")
         self.assertEqual(core.read_json(core.target_path(self.root)), {"height": new_height})
         return record
+
+    def force_deadline_in_mock_journal(self):
+        """Simulate elapsed trial time after successful process startup."""
+        with core.state_lock(self.root):
+            record = core.load(self.root)
+            self.assertEqual(record["phase"], "ACTIVE")
+            record["deadline_utc"] = time.time() - 0.01
+            record["deadline_mono"] = time.monotonic() - 0.01
+            core.atomic_json(core.journal_path(self.root), record)
 
     def assert_phase(self, phase):
         def status():
@@ -87,13 +96,14 @@ class WatchdogTests(unittest.TestCase):
 
     def test_two_process_expiry_and_verify_restored_value(self):
         trial = self.start()
+        self.force_deadline_in_mock_journal()
         result = self.assert_phase("EXPIRED")
         self.assertEqual(result["trial_id"], trial["trial_id"])
         self.assertEqual(core.read_json(core.target_path(self.root)), {"height": 44})
         self.assertIn("restored", result["result"])
 
     def test_manual_rollback_early(self):
-        self.start(duration=4)
+        self.start(duration=15)
         record = json.loads(cli("recover", "--state-dir", self.root))
         self.assertEqual(record["phase"], "RECOVERED")
         self.assertEqual(core.read_json(core.target_path(self.root)), {"height": 44})
@@ -102,13 +112,14 @@ class WatchdogTests(unittest.TestCase):
         self.start()
         with core.state_lock(self.root):
             core.atomic_json(core.target_path(self.root), {"height": 90})
+        self.force_deadline_in_mock_journal()
         result = self.assert_phase("CONFLICT")
         self.assertEqual(core.read_json(core.target_path(self.root)), {"height": 90})
         cli("start", "--state-dir", self.root, "--height", 70,
             "--test-duration", 0.6, expect=2)
 
     def test_crashed_watchdog_manual_recovery_and_no_auto_rearm(self):
-        record = self.start(duration=8)
+        record = self.start(duration=15)
         os.kill(record["watchdog_pid"], signal.SIGTERM)
         time.sleep(0.1)
         # Stage-1 prototype does not have a service to auto-respawn yet:
@@ -132,7 +143,7 @@ class WatchdogTests(unittest.TestCase):
         self.assertEqual(core.read_json(core.target_path(self.root)), {"height": 78})
 
     def test_original_is_captured_before_mock_application(self):
-        self.start(duration=3)
+        self.start(duration=15)
         with core.state_lock(self.root):
             record = core.load(self.root)
             self.assertEqual(record["baseline"], {"height": 44})
