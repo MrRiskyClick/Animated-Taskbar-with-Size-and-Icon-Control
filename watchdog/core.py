@@ -309,3 +309,36 @@ def lease_is_healthy(root: Path, trial_id: str, max_heartbeat_age: float = 1.5) 
             )
     except (SafetyError, OSError):
         return False
+
+def reconcile_stale(root: Path) -> tuple[dict | None, bool]:
+    """Recover an expired/abandoned mock trial before a future launch.
+
+    Returns (record, did_attempt_recovery). Never arms a new trial.
+    An unresolved corrupted journal fails closed and is not overwritten.
+    This is invoked on a future start, NOT a boot-time scheduled service.
+    """
+    if not journal_path(root).exists():
+        return None, False
+    with state_lock(root):
+        record = load(root)
+        if record["phase"] in TERMINAL_PHASES:
+            return record, False
+        if record["phase"] in ("CONFLICT", "RECOVERY_FAILED"):
+            raise SafetyError("Unresolved recovery/conflict needs investigation")
+        deadline = elapsed(record)
+        now = time.time()
+        lost_both = (
+            record["phase"] == "ACTIVE"
+            and isinstance(record.get("heartbeat_utc"), (float, int))
+            and isinstance(record.get("supervisor_heartbeat_utc"), (float, int))
+            and now - record["heartbeat_utc"] > 1.5
+            and now - record["supervisor_heartbeat_utc"] > 1.5
+        )
+        startup_abandoned = (
+            record["phase"] in ("PREPARED", "READY")
+            and isinstance(record.get("created_utc"), (float, int))
+            and now - record["created_utc"] > 5
+        )
+        if deadline or lost_both or startup_abandoned:
+            return _recover_locked(root, record, "reconcile"), True
+        return record, False
