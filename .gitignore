@@ -1,0 +1,10 @@
+# Build outputs, mock journals and local user/session data
+__pycache__/
+*.py[cod]
+*.exe
+*.obj
+*.pdb
+trial_guard_tests
+.watchdog-state/
+watchdog-state/
+*.log
