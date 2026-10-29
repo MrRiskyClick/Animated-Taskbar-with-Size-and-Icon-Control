@@ -262,7 +262,7 @@ int main(int argc, char** argv) {
     if (argc != 4) return 2;
     char* end = nullptr;
     unsigned long pid = std::strtoul(argv[3], &end, 10);
-    if (!end || *end != '\\0' || pid == 0 || pid > 0xffffffffUL) return 2;
+    if (!end || *end != '\0' || pid == 0 || pid > 0xffffffffUL) return 2;
     if (mode == "client") return Client(pipe, false, false, static_cast<DWORD>(pid));
     if (mode == "client-stall") return Client(pipe, false, false, static_cast<DWORD>(pid), true);
     if (mode == "client-capture") return Client(pipe, true, false, static_cast<DWORD>(pid));
