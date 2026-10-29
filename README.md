@@ -42,3 +42,9 @@ Develop on a feature branch; keep `main` stable. Never auto-install or enable an
 - Dock animation: https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp
 
 See `docs/UPSTREAM.md` for exact proposed reuse and provenance.
+
+## First-class Windhawk compatibility targets
+
+The original [Ph0en1x-dev Taskbar Dock Animation](https://windhawk.net/mods/taskbar-dock-animation) is the **behavioral reference** for the new magnification engine. The project must coexist with separately installed [Windows 11 Taskbar Styler](https://windhawk.net/mods/windows-11-taskbar-styler), [Start Menu Styler](https://windhawk.net/mods/windows-11-start-menu-styler), [Notification Center Styler](https://windhawk.net/mods/windows-11-notification-center-styler), [Taskbar tray system icon tweaks](https://windhawk.net/mods/taskbar-tray-system-icon-tweaks), and [Taskbar height and icon size](https://windhawk.net/mods/taskbar-icon-size) where technically feasible. Avoid two simultaneous icon-animation engines; do not automatically alter other mods' settings.
+
+See [Compatibility matrix](docs/COMPATIBILITY.md) and [Emergency recovery](docs/EMERGENCY_RECOVERY.md). Compatibility has **not yet been demonstrated**.
