@@ -74,3 +74,9 @@ The Windhawk diagnostic source has three **optional** settings: diagnosticPipeSu
 Windows CI builds and runs the standalone client/server, then syntax-checks the bundled single-file mod using a minimal Windhawk API declaration shim. Only an actual Windhawk toolchain/build and controlled Explorer testing can validate real mod runtime behavior; those steps have not been performed. No automatic installs or edits to the user's Windhawk themes occur.
 
 **Next required gate:** design an explicit trust anchor for the watchdog binary and secure per-trial bootstrap between an authorized launcher and an injected Explorer process. Do not send secrets via Windhawk settings or use a user-writable pipe name as proof of identity. Follow with native watchdog packaging and per-property rollback before any active shell changes.
+
+## Stage 1h — signed/pinned watchdog verification experiment
+
+A standalone Win32 identity verifier can compare a process's reported executable file against a pinned SHA-256 and require Windows Authenticode verification, while checking recorded process creation time. It has **not been connected** to the Windhawk diagnostic or its named-pipe observer. Unlike a PID/path-only assertion, a *preapproved* digest can constrain which exact on-disk executable is accepted, but this still cannot attest to loaded process memory.
+
+Do not insert a hash, credential, or unreviewed signer name into Windhawk editable settings and call it trusted. Future release gating must establish an approved signer identity and signed native watchdog build with a stable hash pin, followed by OS-verified peer identity and authenticated challenge/response. See [WATCHDOG_IDENTITY.md](WATCHDOG_IDENTITY.md).
