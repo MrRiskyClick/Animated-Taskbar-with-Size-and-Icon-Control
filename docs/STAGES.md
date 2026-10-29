@@ -62,3 +62,16 @@ Review [watchdog/README.md](../watchdog/README.md) and the [Stage 1 safety speci
 An exact-mod-ID-only, dry-run-by-default Windhawk CLI adapter is present for Windhawk **2.x** (which has the official `windhawk-cli.exe`). Fake-runner tests validate version, command and error policy on Windows/Linux; no real Windhawk invocation or shell mutation has been performed. There is no automatic disable on watchdog expiry yet and no supported Windhawk 1.x independent-disable mechanism. Detailed acceptance requirements: [WINDHAWK_INTEGRATION.md](WINDHAWK_INTEGRATION.md).
 
 The Stage 1 safety gate is still **not passed**. Development cannot proceed to live taskbar modifications until mod-side lease enforcement, startup recovery, durable real-property rollback, and failure injection are completed.
+
+## Stage 1b diagnostic lease bridge status
+
+- [x] Watchdog emits bounded versioned lease observation (mock trial only).
+- [x] C++17 parser and latched stale/expired/mismatch rejection, tested on Windows and Linux.
+- [x] Read-only Windhawk diagnostic skeleton polls for lease health with optional configured mock path/trial ID; always stops observation by 120s.
+- [x] Single-source bundling script with static no-mutation checks.
+- [ ] Trustworthy authenticated watchdog ⇄ Explorer control channel.
+- [ ] Durable Windows system-property inverse journal, native runtime and recovery after hangs/restarts/reboots.
+- [ ] Tested automatic Windhawk disable on user's installed version; no auto install or enable.
+- [ ] Real taskbar change safety/reversibility demonstration.
+
+**These completed boxes are for a non-mutating diagnostic, not completion of the Stage 1 safety gate.** 
