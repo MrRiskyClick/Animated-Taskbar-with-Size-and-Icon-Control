@@ -78,3 +78,24 @@ jobs:
         env:
           ATB_BINARY_IDENTITY_PROBE: "./binary_identity_probe_win.exe"
         run: python -m unittest discover -s tests -p "test_binary_identity.py" -v
+      - name: Prove release policy refuses unsigned, unapproved and tampered binaries
+        if: runner.os == 'Windows'
+        env:
+          ATB_SOURCE_COMMIT: ${{ github.sha }}
+        shell: pwsh
+        run: ./tests/release_gate_negative.ps1 -UnsignedDiagnostic (Resolve-Path ./binary_identity_probe_win.exe).Path -SourceCommit $env:ATB_SOURCE_COMMIT
+      - name: Generate UNTRUSTED diagnostic artifact manifest
+        if: runner.os == 'Windows'
+        env:
+          ATB_SOURCE_COMMIT: ${{ github.sha }}
+        run: python scripts/build_diagnostic_manifest.py --candidate binary_identity_probe_win.exe --source-commit "$env:ATB_SOURCE_COMMIT" --output diagnostic-artifact/untrusted-manifest.json
+      - name: Archive UNTRUSTED test-only binary (no release or deployment)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: UNTRUSTED-identity-diagnostic-${{ github.run_id }}
+          path: |
+            binary_identity_probe_win.exe
+            diagnostic-artifact/untrusted-manifest.json
+          retention-days: 3
+          if-no-files-found: error
