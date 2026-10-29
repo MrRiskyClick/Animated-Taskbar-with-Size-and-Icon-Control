@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 import time
 
-from watchdog import core
+from watchdog import core, mock_credentials
 
 STALE_SECONDS = 5.0
 
@@ -18,7 +18,7 @@ STALE_SECONDS = 5.0
 def register(root: Path, trial_id: str, token: str) -> bool:
     with core.state_lock(root):
         record = core.load(root)
-        if (record["trial_id"] != trial_id or record["token"] != token or
+        if (record["trial_id"] != trial_id or not mock_credentials.matches(token, record["token_digest"]) or
                 record["phase"] != "PREPARED" or core.elapsed(record)):
             return False
         record["supervisor_pid"] = __import__("os").getpid()
@@ -36,7 +36,7 @@ def heartbeat_fresh(record: dict, field: str, now: float | None = None) -> bool:
 def tick(root: Path, trial_id: str, token: str) -> bool:
     with core.state_lock(root):
         record = core.load(root)
-        if record["trial_id"] != trial_id or record["token"] != token:
+        if record["trial_id"] != trial_id or not mock_credentials.matches(token, record["token_digest"]):
             raise core.SafetyError("Supervisor identity mismatch")
         if record["phase"] in core.TERMINAL_PHASES:
             return False
@@ -61,16 +61,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="MOCK-only recovery supervisor")
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--trial-id", required=True)
-    parser.add_argument("--token", required=True)
     args = parser.parse_args()
     if __import__("os").environ.get("ATB_WATCHDOG_TEST_MODE") != "1":
         print("Recovery supervisor is mock-only", file=sys.stderr)
         return 2
     root = args.state_dir.resolve()
     try:
-        if not register(root, args.trial_id, args.token):
+        token = mock_credentials.receive(sys.stdin.buffer)
+        if not register(root, args.trial_id, token):
             raise core.SafetyError("Supervisor could not register")
-        while tick(root, args.trial_id, args.token):
+        while tick(root, args.trial_id, token):
             time.sleep(core.POLL_SECONDS)
     except (core.SafetyError, OSError, ValueError) as exc:
         print(f"Supervisor failure: {exc}", file=sys.stderr)
