@@ -48,3 +48,9 @@ See `docs/UPSTREAM.md` for exact proposed reuse and provenance.
 The original [Ph0en1x-dev Taskbar Dock Animation](https://windhawk.net/mods/taskbar-dock-animation) is the **behavioral reference** for the new magnification engine. The project must coexist with separately installed [Windows 11 Taskbar Styler](https://windhawk.net/mods/windows-11-taskbar-styler), [Start Menu Styler](https://windhawk.net/mods/windows-11-start-menu-styler), [Notification Center Styler](https://windhawk.net/mods/windows-11-notification-center-styler), [Taskbar tray system icon tweaks](https://windhawk.net/mods/taskbar-tray-system-icon-tweaks), and [Taskbar height and icon size](https://windhawk.net/mods/taskbar-icon-size) where technically feasible. Avoid two simultaneous icon-animation engines; do not automatically alter other mods' settings.
 
 See [Compatibility matrix](docs/COMPATIBILITY.md) and [Emergency recovery](docs/EMERGENCY_RECOVERY.md). Compatibility has **not yet been demonstrated**.
+
+## Safety watchdog prototype (Stage 1a)
+
+The development branch includes an independent subprocess watchdog and durable **mock-only** trial journal, with two-minute expiration by default. It uses separate processes and compare-before-restore to avoid clobbering externally edited mock settings. Windows + Linux mock CI tests pass.
+
+This does **not** yet recover the Windows taskbar, disable the Windhawk mod, restart after failure or guarantee restoration. Do not treat it as a production safety solution. See [watchdog/README.md](watchdog/README.md), [Stage 1 safety](docs/SAFETY.md) and [Stage 1 milestones](docs/STAGES.md).
