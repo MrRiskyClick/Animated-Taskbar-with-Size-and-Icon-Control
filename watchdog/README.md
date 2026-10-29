@@ -66,3 +66,9 @@ The Windhawk diagnostic mod reads an optionally configured file and trial ID. Th
 `watchdog/cli.py start` now launches a dedicated `watchdog.supervisor` process and confirms its heartbeat **before** launching the primary watchdog and applying any mock change. Each process watches the other's heartbeat and the trial deadline. Killing either one is expected to trigger automatic mock restoration by the other. The helper is not installed as a Windows service and has no boot-time recovery integration.
 
 This eliminates the earlier *single process killed → always requires manual mock recovery* weakness in the common one-process-failure case, but **it does not provide guaranteed 120-second recovery for Windows**. If both processes die or a machine reboot interrupts the trial, manual reconciliation is still needed. A real mod must use authenticated, permission-scoped IPC, and capture/undo exactly the Windows properties it changes.
+
+## Stage 1c — reconciling abandoned mock trials
+
+If **both** safety processes are terminated, no live process remains to restore the mock state at its deadline. The next invocation of `watchdog.cli start` now checks the persisted trial and, if expired or both heartbeat records are stale, restores the original mock value when safe. Importantly, it **refuses to begin a new trial in the same invocation**; a second explicit command is required. The `reconcile` command also inspects and attempts appropriate recovery without arming a new trial.
+
+This is not recovery at Windows boot or guaranteed recovery within 120 seconds if the machine is off, suspended, or both processes die. Production startup recovery, authenticated control, and real taskbar restoration remain mandatory.
