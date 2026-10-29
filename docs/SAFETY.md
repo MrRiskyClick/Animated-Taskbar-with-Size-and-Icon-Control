@@ -58,3 +58,9 @@ Use absolute journal status transitions with durable writes. Non-reentrant rollb
 ## Stage 0 status
 
 Only a **non-mutating diagnostic prototype** and simulated rollback unit tests may ship at this point. They are explicitly not a production watchdog or comprehensive Windows savestate.
+
+## External mod settings and manual recovery
+
+When restoring our experiment, never overwrite the saved settings of Windows 11 Taskbar Styler, Start Menu Styler, Notification Center Styler, Taskbar tray system icon tweaks, Taskbar height/icon-size or the original Ph0en1x-dev Dock Animation. Original theme/background/pip/clock/system tray settings are user-owned. If an unguarded hook collision would risk losing their state, stop the trial before applying changes.
+
+A **manual Windows System Restore point** is a valuable third-layer escape hatch (including via WinRE after a boot failure), but can be absent or fail and does not guarantee complete restoration of all mod data or personal files. It **must not be used to justify** disabling the independent 120-second expiration/recovery requirement. See [EMERGENCY_RECOVERY.md](EMERGENCY_RECOVERY.md).
