@@ -23,19 +23,7 @@ def print_state(record: dict):
     print(json.dumps(output, indent=2, sort_keys=True), flush=True)
 
 
-def run_start(root: Path, height: int, duration: float | None) -> int:
-    if os.environ.get("ATB_WATCHDOG_TEST_MODE") != "1":
-        raise core.SafetyError(
-            "Stage-1 prototype only runs with ATB_WATCHDOG_TEST_MODE=1; "
-            "no Windows shell integration exists"
-        )
-    record = core.prepare(root, height, test_duration=duration)
-    argv = [
-        sys.executable, "-m", "watchdog.cli", "watch",
-        "--state-dir", str(root.resolve()),
-        "--trial-id", record["trial_id"],
-        "--token", record["token"],
-    ]
+def _detached_process(argv: list[str]) -> subprocess.Popen:
     kwargs = {"stdin": subprocess.DEVNULL,
               "stdout": subprocess.DEVNULL,
               "stderr": subprocess.DEVNULL}
@@ -44,32 +32,64 @@ def run_start(root: Path, height: int, duration: float | None) -> int:
                                    subprocess.CREATE_NEW_PROCESS_GROUP)
     else:
         kwargs["start_new_session"] = True
+    return subprocess.Popen(argv, **kwargs)
+
+
+def run_start(root: Path, height: int, duration: float | None) -> int:
+    if os.environ.get("ATB_WATCHDOG_TEST_MODE") != "1":
+        raise core.SafetyError(
+            "Stage-1 prototype only runs with ATB_WATCHDOG_TEST_MODE=1; "
+            "no Windows shell integration exists"
+        )
+    record = core.prepare(root, height, test_duration=duration)
     try:
-        child = subprocess.Popen(argv, **kwargs)
-        # Positive acknowledgement: only apply fixture after watchdog is alive.
+        # The recovery supervisor starts and positively acknowledges BEFORE
+        # the watchdog or any simulated mock state mutation is allowed.
+        supervisor = _detached_process([
+            sys.executable, "-m", "watchdog.supervisor",
+            "--state-dir", str(root.resolve()), "--trial-id", record["trial_id"],
+            "--token", record["token"]])
         ready_deadline = time.monotonic() + 5
         while time.monotonic() < ready_deadline:
-            if child.poll() is not None:
-                raise core.SafetyError("Independent watchdog terminated before readiness")
+            if supervisor.poll() is not None:
+                raise core.SafetyError("Independent recovery supervisor terminated early")
+            with core.state_lock(root):
+                current = core.load(root)
+                if (current.get("supervisor_pid") == supervisor.pid and
+                        core._supervisor_fresh(current)):
+                    break
+            time.sleep(0.025)
+        else:
+            raise core.SafetyError("Independent recovery supervisor readiness timed out")
+
+        child = _detached_process([
+            sys.executable, "-m", "watchdog.cli", "watch",
+            "--state-dir", str(root.resolve()), "--trial-id", record["trial_id"],
+            "--token", record["token"]])
+        ready_deadline = time.monotonic() + 5
+        while time.monotonic() < ready_deadline:
+            if child.poll() is not None or supervisor.poll() is not None:
+                raise core.SafetyError("Safety process terminated before readiness")
             with core.state_lock(root):
                 current = core.load(root)
                 if (current["phase"] == "READY" and
-                        current["watchdog_pid"] == child.pid):
+                        current["watchdog_pid"] == child.pid and
+                        current.get("supervisor_pid") == supervisor.pid and
+                        core._supervisor_fresh(current)):
                     break
             time.sleep(0.025)
         else:
             raise core.SafetyError("Independent watchdog readiness timed out")
         core.guarded_mock_apply(root, record["trial_id"])
     except Exception:
-        # A partially applied fixture is restored by recovery; journal blocks
-        # new trials until a terminal state can be verified.
+        # Trial is blocked and mock restoration attempted even after partial
+        # startup failures. This is not a Windows shell recovery mechanism.
         core.recover(root, "failed-start")
         raise
     with core.state_lock(root):
         current = core.load(root)
     print_state(current)
     return 0
-
 
 def run_watch(root: Path, trial_id: str, token: str) -> int:
     if not core.ready(root, trial_id, token):
