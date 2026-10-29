@@ -67,6 +67,9 @@ int main() {
     auto conflict=Sample();current=77;
     assert(!Restore(conflict,current,changed));
     assert(current==77 && conflict.phase==Phase::conflict);
+    // Repeating recovery on an unresolved conflict must NEVER claim success.
+    assert(!Restore(conflict,current,changed));
+    assert(current==77 && !changed);
     auto baseline=Sample();current=44;
     assert(Restore(baseline,current,changed));
     assert(!changed && baseline.phase==Phase::recovered);
