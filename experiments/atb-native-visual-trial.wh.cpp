@@ -715,6 +715,38 @@ struct AtbNativeOverhang {
 bool AtbEqualRect(RECT a, RECT b) {
     return EqualRect(&a,&b)!=0;
 }
+// Stable 64-bit FNV-1a over Win32 RGNDATA, published alongside our ownership
+// marker. The independent watchdog must compare this fingerprint with the
+// actual GetWindowRgn contents before it may clear a taskbar window region.
+// This is a CONFLICT DETECTOR, not cryptographic authentication.
+ULONGLONG AtbRegionFingerprint(HRGN region) {
+    if(!region)return 0;
+    DWORD length=GetRegionData(region,0,nullptr);
+    if(length<sizeof(RGNDATAHEADER)||length>1024*1024)return 0;
+    std::vector<BYTE> bytes(length);
+    auto* regionData=reinterpret_cast<RGNDATA*>(bytes.data());
+    if(GetRegionData(region,length,regionData)!=length)return 0;
+    ULONGLONG result=14695981039346656037ULL;
+    for(BYTE byte:bytes) {
+        result^=byte;
+        result*=1099511628211ULL;
+    }
+    return result ? result : 1;
+}
+bool AtbOurRegionFingerprintMatches() {
+    auto& a=g_atbOverhang;
+    if(!a.active || !a.lastRegion || !IsWindow(a.hwnd))return false;
+    HRGN current=CreateRectRgn(0,0,0,0);
+    if(!current)return false;
+    const int type=GetWindowRgn(a.hwnd,current);
+    const ULONGLONG actual=type==ERROR ? 0 : AtbRegionFingerprint(current);
+    DeleteObject(current);
+    const auto expected=AtbRegionFingerprint(a.lastRegion);
+    const auto marker=(ULONGLONG)(ULONG_PTR)GetPropW(
+                        a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+    return actual!=0 && marker!=0 && expected!=0 &&
+           actual==expected && marker==expected;
+}
 bool AtbIsOurRegion() {
     if(!g_atbOverhang.active || !g_atbOverhang.lastRegion) return false;
     HRGN actual=CreateRectRgn(0,0,0,0);
@@ -742,14 +774,17 @@ void AtbRestoreNativeOverhang() {
         if(pid==GetCurrentProcessId()) {
             auto marker=GetPropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
             if(marker==(HANDLE)(ULONG_PTR)atb_trial::geometry.watcherPid) {
-                if(AtbIsOurRegion()) {
+                // Check BOTH exact pixel geometry and separately published
+                // fingerprint. If an unrelated mod replaced the region,
+                // never clear or reassign its visual/input geometry.
+                if(AtbIsOurRegion() && AtbOurRegionFingerprintMatches()) {
+                    RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
                     RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
-                    // The starting region was verified absent. Other mods'
-                    // intervening region edits are left alone.
                     SetWindowRgn(a.hwnd,nullptr,TRUE);
                 } else {
+                    RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
                     RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
-                    Wh_Log(L"[ATB] Another mod changed the HWND region; preserved it");
+                    Wh_Log(L"[ATB] Region ownership no longer verified; preserved foreign state");
                 }
             }
             RECT now{};
@@ -778,13 +813,15 @@ bool AtbSetRegion(HRGN next) {
     if(!a.active || !next) return false;
     if(a.lastRegion && EqualRgn(next,a.lastRegion)) {
         DeleteObject(next);
-        return true; // keep the current geometry
+        return AtbIsOurRegion() && AtbOurRegionFingerprintMatches();
     }
-    if(a.lastRegion && !AtbIsOurRegion()) {
+    if(a.lastRegion &&
+       (!AtbIsOurRegion() || !AtbOurRegionFingerprintMatches())) {
         DeleteObject(next);
         Wh_Log(L"[ATB] Foreign window region detected; no overwrite");
         // Property must be cleared before the external watcher attempts to
         // reset it. Preserve any external region.
+        RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
         RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
         return false;
     }
@@ -801,6 +838,12 @@ bool AtbSetRegion(HRGN next) {
     }
     if(a.lastRegion) DeleteObject(a.lastRegion);
     a.lastRegion=copy;
+    const auto fingerprint=AtbRegionFingerprint(copy);
+    if(!fingerprint || !SetPropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2",
+                                (HANDLE)(ULONG_PTR)fingerprint)) {
+        Wh_Log(L"[ATB] Failed to publish region fingerprint; disarming overhang");
+        return false;
+    }
     return true;
 }
 
