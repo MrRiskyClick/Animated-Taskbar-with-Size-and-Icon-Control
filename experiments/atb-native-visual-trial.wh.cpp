@@ -860,7 +860,14 @@ bool AtbSetRegion(HRGN next) {
     const auto fingerprint=AtbRegionFingerprint(copy);
     if(!fingerprint || !SetPropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2",
                                 (HANDLE)(ULONG_PTR)fingerprint)) {
-        Wh_Log(L"[ATB] Failed to publish region fingerprint; disarming overhang");
+        Wh_Log(L"[ATB] Region fingerprint publication failed; rolling back just-applied region");
+        // A successful SetWindowRgn preceded this failure. The journal hash
+        // was not published, so the watchdog deliberately cannot clear it.
+        // Revert synchronously ONLY if our own exact pixel region remains.
+        if(AtbIsOurRegion()) {
+            SetWindowRgn(a.hwnd,nullptr,TRUE);
+            RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+        }
         return false;
     }
     return true;
@@ -990,8 +997,8 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
         return false;
     }
     a.frameAppliedHeight=originalDip+extraDip;
+    a.heightOwned=true; // journal inverse BEFORE any XAML property mutation
     taskbarFrame.Height(a.frameAppliedHeight);
-    a.heightOwned=true;
     for(auto const& child:content) {
         AtbFrameChildSnapshot original;
         original.element=child;
@@ -1011,8 +1018,10 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
         original.ours=group;
         // Preserve native control dimensions and the tray/background baseline;
         // the expanded frame itself provides hit-test area for scaled icons.
-        child.Height(original.appliedHeight);
         a.shiftedChildren.push_back(std::move(original));
+        // Journal the inverse first. Even a throwing WinRT setter must not
+        // leave an untracked half-applied XAML child property.
+        child.Height(a.shiftedChildren.back().appliedHeight);
         child.RenderTransform(group);
     }
 
