@@ -92,7 +92,7 @@ int Watchdog(DWORD expectedExplorerPid, DWORD parentPid, RECT baseline,
     std::cout<<"PASS: independent process restored native taskbar rectangle\n";
     return 0;
 }
-int Parent() {
+int Parent(bool simulateAbruptDeath=false) {
     HWND hwnd{};DWORD explorerPid=0;RECT baseline{};
     MONITORINFO monitor{sizeof(monitor)};
     if(!Target(hwnd,explorerPid,baseline,monitor)){
@@ -175,6 +175,12 @@ int Parent() {
             }
         }
     }
+    if(simulateAbruptDeath && hadExpected && workPreserved) {
+        // No parent destructors, no cleanup signal. Only the separately
+        // spawned watchdog can restore the real native taskbar HWND now.
+        std::cout<<"ATB CRASH INJECTION: parent exits without cleanup, watchdog owns restoration\n"<<std::flush;
+        ExitProcess(71);
+    }
     SetEvent(finish.h);
     DWORD joined=WaitForSingleObject(childProcess.h,6500);
     DWORD exitCode=0;
@@ -206,12 +212,55 @@ int Parent() {
     std::cout<<"PASS: native Shell_TrayWnd overhang with unchanged desktop workarea, independently restored\n";
     return 0;
 }
+int CrashController() {
+    HWND hwnd{}; DWORD pid=0; RECT baseline{};
+    MONITORINFO baselineMonitor{sizeof(baselineMonitor)};
+    if(!Target(hwnd,pid,baseline,baselineMonitor)) {
+        std::cout<<"SKIP: no native taskbar available for crash recovery trial\n";
+        return 0;
+    }
+    wchar_t exe[32768]{};
+    if(!GetModuleFileNameW(nullptr,exe,32768)) return 30;
+    std::wstring cmd=L"\""+std::wstring(exe)+L"\" --parent-crash";
+    STARTUPINFOW startup{sizeof(startup)};
+    PROCESS_INFORMATION p{};
+    if(!CreateProcessW(exe,cmd.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,
+                       nullptr,nullptr,&startup,&p))return 31;
+    Handle child(p.hProcess), thread(p.hThread);
+    if(WaitForSingleObject(child.h,12000)!=WAIT_OBJECT_0)return 32;
+    DWORD exit=0;
+    if(!GetExitCodeProcess(child.h,&exit))return 33;
+    if(exit!=71) {
+        std::cout<<"INCONCLUSIVE: geometry extension unavailable for crash injection; exit "<<exit<<"\n";
+        return exit==0?0:34;
+    }
+    // Controller has no shutdown signal or access to child-owned handles.
+    // Only the independent watchdog notices the dead worker and restores.
+    const auto deadline=GetTickCount64()+7000;
+    while(GetTickCount64()<deadline) {
+        RECT current{};
+        MONITORINFO work{sizeof(work)};
+        if(GetWindowRect(hwnd,&current) &&
+           GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&work) &&
+           Equals(current,baseline) &&
+           Equals(work.rcWork,baselineMonitor.rcWork)) {
+            std::cout<<"PASS: independent watchdog restored native taskbar after forced parent process death\n";
+            return 0;
+        }
+        Sleep(40);
+    }
+    std::cerr<<"FAIL: independent watchdog did not restore after forced worker death\n";
+    return 35;
+}
+
 int wmain(int argc,wchar_t** argv) {
     if(!HostedCI()) {
         std::cerr<<"REFUSED: GitHub Actions CI only; never run on a user's PC.\n";
         return 2;
     }
     if(argc==1)return Parent();
+    if(argc==2&&wcscmp(argv[1],L"--crash-test")==0)return CrashController();
+    if(argc==2&&wcscmp(argv[1],L"--parent-crash")==0)return Parent(true);
     if(argc!=11||wcscmp(argv[1],L"--watchdog")!=0)return 1;
     RECT baseline{
         _wtoi(argv[4]),_wtoi(argv[5]),_wtoi(argv[6]),_wtoi(argv[7])
