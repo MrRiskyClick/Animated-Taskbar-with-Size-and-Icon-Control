@@ -116,9 +116,10 @@ class NativeContract(unittest.TestCase):
             'Set-ScheduledTask', 'Register-ScheduledTask',
         ):
             self.assertNotIn(forbidden.lower(), (watcher + disarm).lower(), forbidden)
-        self.assertIn("Disabled',1", disarm)
         self.assertIn("local@atb-animated-taskbar-trial", disarm)
-        self.assertIn("Disable-OnlyAtbLocalMod", watcher)
+        self.assertIn("Assert-AtbOwnModReadable", watcher)
+        self.assertIn("OpenSubKey($keyName,$false)", disarm)
+        self.assertNotIn("Disable-OnlyAtbLocalMod", watcher)
         self.assertIn('Write-Lease "REVOKED', watcher)
         self.assertIn('AtbRestoreNativeOverhang();', MOD)
         self.assertIn('if (!atb_trial::Arm())', MOD)
