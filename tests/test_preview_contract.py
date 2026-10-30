@@ -68,6 +68,22 @@ class PreviewContractTests(unittest.TestCase):
         for key in ("--icon-gap", "--pip-offset", "--icon-offset"):
             self.assertIn("root.style.setProperty('" + key + "'", self.html)
 
+    def test_icon_push_tracks_current_animated_scale(self):
+        # All icon translations must be solved from the actual rendered
+        # scale on the same frame. Independent position springs would lag.
+        for expression in (
+            "const extraWidths=items.map(a=>(a.current-1)*state.iconsize)",
+            "const totalExtra=extraWidths.reduce",
+            "const shift=precedingExtra+extraWidths[i]/2-totalExtra/2",
+            "a.el.style.transform=`translate3d(",
+            "const separatorShift=extraWidths.slice(0,boundary).reduce",
+            "separator.style.transform=`translate3d(",
+        ):
+            self.assertIn(expression, self.html)
+        # Spacing must not be discounted by the Windhawk default 50%
+        # factor, which can permit overlap at extreme magnification.
+        self.assertNotIn("const spacingFactor=0.5", self.html)
+
     def test_simulated_desktop_and_export_are_explicit(self):
         for expected in ("simulated", "Windows unchanged", "No system changes",
                          "ATB_DEMO", "localStorage", "application dock"):

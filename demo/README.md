@@ -1,4 +1,4 @@
-# Animated Taskbar — Interactive Preview v0.2
+# Animated Taskbar — Interactive Preview v0.3
 
 **A real, runnable visual-interaction demo**, not an actual Explorer/Windhawk taskbar mod.
 
@@ -19,6 +19,14 @@ The v0.2 configuration is stored under a separate browser local-storage key, so 
 - **Pips vertical placement** independently moves the running/active status indicators relative to their icons.
 - Icon size now ranges up to 112 px. The optional floating-dock separation control is hidden in overlapping mode.
 
+## Changes in v0.3 — collision-free dock magnification
+
+Ph0en1x-dev's [Taskbar Dock Animation](https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp) uses cumulative expansion and centered shifting to move neighboring taskbar icons as they grow.
+
+Our browser demo now follows the same geometric principle: every frame it calculates each icon's **current animated width gain**, shifts subsequent icons by accumulated gains, and subtracts half of the total expansion to keep the dock centered. Unlike the original mod's adjustable spacing sensitivity (50% by default), this preview uses the full current expansion so that growing icons do not overlap even at high magnification.
+
+The separator participates in the push layout. Icon scales and horizontal offsets are always computed from the **same frame**, rather than using separate springs that could get out of sync. This works with the existing gap, neighbor-influence, magnification and responsiveness controls. Existing v0.2 stored settings remain readable (the storage key was intentionally preserved).
+
 ## What this proves
 
 The dock, spring simulation, pointer response, switching layouts and controls work in a standalone browser window. This lets the owner choose appearance and interaction before developing risky Explorer taskbar hooks.
@@ -33,5 +41,8 @@ The dock, spring simulation, pointer response, switching layouts and controls wo
 The existing native watchdog, IPC, Authenticode and rollback work remains isolated on the Stage 1 development branch. **Real shell modifications are still blocked** pending successful native state-capture and restoration tests.
 
 ## Testing
+
+v0.3 was measured in Chromium at 1540×930 with rapid pointer traversal across icons. Tests sampled 165 animated states across zero-gap and wide-gap layouts, 48–112 px icons, up to 2.2× magnification, animation responsiveness from 5% to 95%, and neighbor influence both ON and OFF. Every sampled adjacent pair retained its chosen nonnegative gap; there were no JavaScript errors. These are browser visual-geometry measurements, not proof of native Windows taskbar behavior.
+
 
 Browser interactions were checked in headless Chromium at 1440×900: overlapping layout defaults ON, bar height stays 35 px with 95 px icons, icon vertical offset, gap and pip offset each change their intended geometry, optional floating mode, Reset, and absence of runtime script errors. The browser does not verify live Windows taskbar functionality. Automated repository tests verify that this demo stays self-contained and offline; they are not equivalent to live Windows taskbar testing.
