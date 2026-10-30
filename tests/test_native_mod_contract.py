@@ -58,6 +58,20 @@ class NativeContract(unittest.TestCase):
         self.assertIn('bar.Width(22.0)', MOD)
         self.assertIn('overlay.IsHitTestVisible(false)', MOD)
 
+    def test_native_overhang_is_explicit_and_geometry_lease_bound(self):
+        self.assertIn('EnableNativeOverhang: false', MOD)
+        self.assertIn('g_settings.enableNativeOverhang', MOD)
+        self.assertIn('if(!g_settings.enableNativeOverhang || a.active ||', MOD)
+        self.assertIn('atb_trial::geometry.valid', MOD)
+        self.assertIn('ATB2 %lu %llu %llu %lu %ld %ld %ld %ld %ld %c', MOD)
+        self.assertIn('std::memcmp(&geometry.original,&observed.original,sizeof(RECT))', MOD)
+        self.assertIn('SWP_NOSENDCHANGING', MOD)
+        self.assertIn('AtbNativeWorkareaStillPreserved', MOD)
+        self.assertIn('AtbSetRegion(bottomOnly)', MOD)
+        self.assertIn('AtbRestoreNativeOverhang();', MOD)
+        self.assertNotIn('SetTaskbarAutoHide', MOD)
+        self.assertNotIn('ABM_NEW', MOD)
+
     def test_watchdog_isolation(self):
         self.assertIn('$SelfTest', WATCHER)
         self.assertIn('atb-dev-selftest-', WATCHER)
