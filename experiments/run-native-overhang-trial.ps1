@@ -88,10 +88,12 @@ function Stop-NativeTrial(){
  $expected.Top=$targetTop
  $expected.Right=$before.Right
  $expected.Bottom=$before.Bottom
- if(-not (Same-Rect $rect $expected)){
-  if(-not (Same-Rect $rect $before)){Write-Warning 'Another component changed the taskbar rectangle; refusing overwrite'}
+ if(-not (Same-Rect $rect $expected) -and -not (Same-Rect $rect $before)){
+  Write-Warning 'Another component changed the taskbar rectangle; refusing overwrite'
   return
  }
+ # Even if Explorer already restored the ORIGINAL RECT, an interrupted
+ # XAML cleanup could have left our window-region mask installed.
  # Only this trial's marker permits touching its optional clipping region.
  # Never clear an unrelated mod's window region.
  $mark=[AtbGeoWin32]::GetProp($trialHwnd,'ATB_OWNED_OVERHANG_V2')
@@ -105,6 +107,7 @@ function Stop-NativeTrial(){
    Write-Warning 'Explorer is unresponsive; native region cleanup deferred to mod UI-thread expiry'
   }
  }
+ if(Same-Rect $rect $before){return}
  # SWP_ASYNCWINDOWPOS ensures an unresponsive Explorer doesn't hang watcher.
  # SWP_NOSENDCHANGING avoids Windows clamping the native shell rectangle.
  $flags=[uint32](0x4 -bor 0x10 -bor 0x400 -bor 0x4000)
