@@ -1,4 +1,4 @@
-# Animated Taskbar — Interactive Preview v0.3
+# Animated Taskbar — Interactive Preview v0.4
 
 **A real, runnable visual-interaction demo**, not an actual Explorer/Windhawk taskbar mod.
 
@@ -46,3 +46,7 @@ v0.3 was measured in Chromium at 1540×930 with rapid pointer traversal across i
 
 
 Browser interactions were checked in headless Chromium at 1440×900: overlapping layout defaults ON, bar height stays 35 px with 95 px icons, icon vertical offset, gap and pip offset each change their intended geometry, optional floating mode, Reset, and absence of runtime script errors. The browser does not verify live Windows taskbar functionality. Automated repository tests verify that this demo stays self-contained and offline; they are not equivalent to live Windows taskbar testing.
+
+## Changes in v0.4 — accepted visual specification
+
+The fake pinned/unpinned separator has been removed; the preview no longer invents a Windows divider. Window-state pips are now **zero for 0 running windows, one/two/three dots for 1–3 windows, or one wide bar for 4+**. The browser demo provides Shift+Click to open an additional simulated window and right-click to close one. These are simulated counts, **not** actual Windows window enumeration. The approved v0.4 HTML is the reference appearance for the forthcoming Windhawk implementation.
