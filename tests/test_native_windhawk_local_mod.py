@@ -38,6 +38,7 @@ class LocalModContract(unittest.TestCase):
         self.assertIn("current += (desiredScale - current) * alpha", c)
         self.assertIn("extraWidths[i] = std::max(0.0, current - 1.0)", c)
         self.assertIn("ctx.icons[i].state.waveTranslateX = finalShift;", c)
+        self.assertIn("} else if (currentIntensity <= 0.001) {", c)
         self.assertNotIn("ctx.icons[i].state.waveTranslateX += (targetTranslateX", c)
 
     def test_no_windows_registry_taskbar_height_changes(self):
