@@ -517,14 +517,14 @@ void AtbUpdatePip(AtbPipSnapshot& pip) {
     auto dots = std::min(count, 3u);
     if (count <= 3) {
         for (unsigned i = 0; i < dots; ++i) {
-            Ellipse dot;
+            winrt::Windows::UI::Xaml::Shapes::Ellipse dot;
             dot.Width(4.0); dot.Height(4.0);
             dot.Fill(brush);
             dot.Margin(Thickness{2.0, 0.0, 2.0, 0.0});
             overlay.Children().Append(dot);
         }
     } else {
-        Rectangle bar;
+        winrt::Windows::UI::Xaml::Shapes::Rectangle bar;
         bar.Width(22.0); bar.Height(4.0);
         bar.RadiusX(2.0); bar.RadiusY(2.0);
         bar.Fill(brush);
