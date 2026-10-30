@@ -72,6 +72,31 @@ class NativeContract(unittest.TestCase):
         self.assertNotIn('SetTaskbarAutoHide', MOD)
         self.assertNotIn('ABM_NEW', MOD)
 
+    def test_secondary_monitor_never_controls_primary_native_hwnd(self):
+        self.assertIn('GetCursorPos(&cursor)', MOD)
+        self.assertIn('PtInRect(&before,cursor)', MOD)
+        self.assertIn('MonitorFromPoint(cursor,MONITOR_DEFAULTTONULL)', MOD)
+        self.assertIn('winrt::get_abi(frame)!=winrt::get_abi(a.frame.get())', MOD)
+
+    def test_native_root_grows_but_original_height_children_remain_bottom_anchored(self):
+        self.assertIn('taskbarFrame.Height(a.frameAppliedHeight);', MOD)
+        self.assertIn('const double extraDip=(double)extra/a.dpiScale;', MOD)
+        self.assertIn('original.appliedHeight=child.ActualHeight();', MOD)
+        self.assertIn('a.shiftedChildren.push_back(std::move(original));', MOD)
+        self.assertIn('for(auto it=a.shiftedChildren.rbegin();', MOD)
+        self.assertIn('child.Height(it->originalHeight)', MOD)
+
+    def test_no_foreign_window_region_is_erased(self):
+        self.assertIn('ATB_REGION_FINGERPRINT_V2', MOD)
+        self.assertIn('AtbOurRegionFingerprintMatches()', MOD)
+        self.assertIn('GetRegionData(region,0,nullptr)', MOD)
+        self.assertIn('GetWindowRgn(a.hwnd,actual)', MOD)
+        watcher = (ROOT / 'experiments' / 'run-native-overhang-trial.ps1').read_text(encoding='utf-8')
+        self.assertIn('RegionFingerprintMatches($trialHwnd)', watcher)
+        self.assertIn('RegionFingerprintSelfTest()', watcher)
+        self.assertIn('GetRegionData(region,length,buffer)', watcher)
+        self.assertNotIn('Stop-Process -Name explorer', watcher)
+
     def test_watchdog_isolation(self):
         self.assertIn('$SelfTest', WATCHER)
         self.assertIn('atb-dev-selftest-', WATCHER)
