@@ -63,7 +63,13 @@ commit** from the accompanying release note before proceeding.
 3. For a full native layout test, enable the experimental **Native unclipped
    overhang** setting only while the mod itself remains disabled. The
    setting is OFF by default. Do not change Windows' taskbar auto-hide mode.
-4. Open **64-bit PowerShell**. Execute this *read-only preflight* from the
+4. If you have **Taskbar Dock Animation** (Ph0en1x-dev) separately
+   enabled, our read-only preflight will refuse the trial because the two
+   native mods hook and animate the same buttons. This project will NOT
+   disable that other mod or change its configuration. You may choose to
+   disable it yourself for the duration of a later controlled test. Other
+   Windhawk mod settings must be left unchanged.
+5. Open **64-bit PowerShell**. Execute this *read-only preflight* from the
    cloned repository:
    ```powershell
    & '.\experiments\check-local-trial-prerequisites.ps1'
