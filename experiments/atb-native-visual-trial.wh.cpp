@@ -1701,12 +1701,21 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
 
 void InitializeAnimationHooks(void* pThis, FrameworkElement const& taskbarFrame) {
     try {
+        // Primary monitor only. No other monitor/taskbar is moved.
+        if(g_settings.enableNativeOverhang && !g_atbOverhang.active)
+            AtbStartNativeOverhang(taskbarFrame);
         if (!g_trialDispatcherTimer) {
             g_trialDispatcherTimer = winrt::Windows::UI::Xaml::DispatcherTimer();
             g_trialDispatcherTimer.Interval(std::chrono::milliseconds(100));
             g_trialTimerToken = g_trialDispatcherTimer.Tick(
                 [](auto const&, auto const&) {
                     if (atb_trial::Check()) {
+                        if(g_atbOverhang.active &&
+                           !AtbNativeWorkareaStillPreserved()) {
+                            Wh_Log(L"[ATB] Workarea changed; immediately rolling back overhang");
+                            AtbRestoreNativeOverhang();
+                            g_settings.enableNativeOverhang=false;
+                        }
                         AtbUpdatePips();
                         return;
                     }
@@ -1717,6 +1726,7 @@ void InitializeAnimationHooks(void* pThis, FrameworkElement const& taskbarFrame)
                         Media::CompositionTarget::Rendering(g_renderingToken);
                     }
                     AtbRestoreAll();
+                    AtbRestoreNativeOverhang();
                     g_contexts.clear();
                     g_activeContextKey = nullptr;
                     if (g_trialDispatcherTimer) g_trialDispatcherTimer.Stop();
@@ -1750,6 +1760,7 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             if (g_isRenderingHooked.exchange(false))
                 Media::CompositionTarget::Rendering(g_renderingToken);
             AtbRestoreAll();
+            AtbRestoreNativeOverhang();
             g_contexts.clear();
             g_activeContextKey = nullptr;
             return;
@@ -1798,6 +1809,10 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             ResetAllIconScales(ctx.icons);
             ctx.isInitialized = false;
             ctx.icons.clear();
+            // Revert to the exact compact native window/region when the user
+            // leaves the taskbar. A later hover may re-enter only while the
+            // original immutable 120-second ATB2 trial remains valid.
+            AtbRestoreNativeOverhang();
 
             g_activeContextKey = nullptr;
             g_lastMouseX = -1.0;
@@ -1875,6 +1890,7 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
         if (mouseX == -1.0) mouseX = 0.0;
 
         ApplyAnimation(mouseX, ctx, currentIntensity, dtSec);
+        AtbUpdateNativeOverhangRegion(ctx);
     } catch (...) {
         if (g_isRenderingHooked.exchange(false)) {
             Media::CompositionTarget::Rendering(g_renderingToken);
@@ -2168,6 +2184,7 @@ void Wh_ModBeforeUninit() {
                 try {
                     AtbStopUiCallbacks();
                     AtbRestoreAll();
+                    AtbRestoreNativeOverhang();
                     g_contexts.clear();
                     Wh_Log(L"[ATB] Native transforms, pips and UI handlers restored");
                 } catch (winrt::hresult_error const& e) {
@@ -2205,6 +2222,7 @@ void Wh_ModSettingsChanged() {
                     // Settings updates should not leave stale ownership or
                     // custom pip layers on recycled taskbar buttons.
                     AtbRestoreAll();
+                    AtbRestoreNativeOverhang();
                     g_contexts.clear();
                     g_activeContextKey = nullptr;
                     g_isBouncing = false;
