@@ -1,19 +1,9 @@
 // ==WindhawkMod==
 // @id              animated-taskbar-safe-preview
 // @name              Animated Taskbar — Local Hover Test
-// @name:zh-CN        任务栏 Dock 动画
-// @name:ja-JP        タスクバー Dock アニメーション
-// @name:ko-KR        작업 표시줄 Dock 애니메이션
-// @name:pt-BR        Animação Dock da Barra de Tarefas
-// @name:it-IT        Animazione Dock della Barra delle applicazioni
 // @description       Opt-in one-shot 120-second test of real Windows 11 taskbar hover magnification and neighbor pushing
-// @description:uk-UA Анімація іконок панелі завдань, як в macOS, при наведенні
-// @description:zh-CN 类似 macOS 的任务栏图标悬停动画
-// @description:ja-JP macOS のように、マウスホバーでタスクバーアイコンをアニメーション表示します
-// @description:ko-KR macOS처럼 마우스를 올리면 작업 표시줄 아이콘이 애니메이션됩니다
-// @description:pt-BR Anima os ícones da barra de tarefas ao passar o mouse, como no macOS
-// @description:it-IT Anima le icone della barra delle applicazioni al passaggio del mouse, come su macOS
 // @version           0.1.0
+// @license           MIT
 // @author            MrRiskyClick (derived from Ph0en1x-dev)
 // @github            https://github.com/MrRiskyClick
 // @include           explorer.exe
