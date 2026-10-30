@@ -64,3 +64,68 @@ Only a **non-mutating diagnostic prototype** and simulated rollback unit tests m
 When restoring our experiment, never overwrite the saved settings of Windows 11 Taskbar Styler, Start Menu Styler, Notification Center Styler, Taskbar tray system icon tweaks, Taskbar height/icon-size or the original Ph0en1x-dev Dock Animation. Original theme/background/pip/clock/system tray settings are user-owned. If an unguarded hook collision would risk losing their state, stop the trial before applying changes.
 
 A **manual Windows System Restore point** is a valuable third-layer escape hatch (including via WinRE after a boot failure), but can be absent or fail and does not guarantee complete restoration of all mod data or personal files. It **must not be used to justify** disabling the independent 120-second expiration/recovery requirement. See [EMERGENCY_RECOVERY.md](EMERGENCY_RECOVERY.md).
+
+## Stage 1a implementation audit (2026-10-29)
+
+**Present on `feature/stage1-watchdog-prototype`:**
+- External subprocess watchdog with cross-process file lock and flushed, replace-based JSON journal.
+- 120-second production-default wall-clock + monotonic expiration (test-only shortened deadlines).
+- Acknowledged readiness before isolated mock modification; original and expected values persisted first.
+- Compare-before-restore mock rollback, conflict detection, idempotent recovery, fail-closed lease health helper, refusal to rearm unresolved or corrupt journals.
+- Windows and Linux CI tests passed for these mock-only paths.
+
+**NOT PRESENT / not allowed for production:**
+- Mod communication or automatic Windhawk disable.
+- Windows native shell state capture/inverse operations, taskbar/registry writes, actual taskbar recovery.
+- Watchdog crash auto-respawn and reboot reconciliation, real mod-side heartbeat enforcement, durable integrity hardening across arbitrary power loss.
+- Failure injection on a live Windows Explorer shell, Windows build compatibility allowlist and complete rollback verification.
+
+Even with tests passing, **Stage 1 full safety gate is OPEN**. No source file may add active native taskbar mutation until the missing items are implemented and tested.
+
+## Stage 1c — independent mock recovery supervisor
+
+The mock harness now arms an **independent recovery supervisor before it launches the watchdog and before it changes the mock target**. The supervisor monitors the watchdog journal heartbeat and 120-second deadline. The watchdog monitors the supervisor heartbeat in return. If either process is killed or stops sending heartbeats, the surviving process attempts compare-before-restore of the mock original value, revokes the lease observation, and prevents automatic rearming. Tests intentionally terminate each of the two processes independently on Windows and Linux.
+
+**Not a production guarantee:** If both processes die or Windows loses power, no process is left to perform the mock rollback until a separate startup reconciliation mechanism runs. Both processes still share a writable mock journal and pass a trial token in command-line arguments, which is NOT authenticated IPC or appropriate secret handling. Native Explorer layout changes, true Windows state snapshots, actual Windhawk disable and watchdog installation are **not implemented**. The Stage 1 safety gate remains OPEN.
+
+## Stage 1c improvement: two-way mock recovery and startup reconciliation
+
+A separate supervisor starts before mock modifications and watches the watchdog heartbeat. The primary watchdog also watches supervisor freshness. After either isolated process dies, the other attempts prompt compare-before-restore rollback. A subsequent CLI startup checks an unresolved, expired/stale journal; if recovery is performed, it refuses automatic rearm.
+
+**Residuals:** Both processes crashing still leaves state changed until the next start or future configured boot-time recovery. A Windows sleep or system shutdown can suspend both timers. A taskbar controller must use a more authoritative Windows process identity and authenticated IPC, and must not rely on user-writable journal heartbeats or tokens passed in process command lines. Tests are mock-only; no actual Explorer state has been restored.
+
+## Stage 1d mock credential-handling improvement
+
+A new random 256-bit token is transferred to each mock safety subprocess via stdin rather than embedding it in its process argument list. The on-disk journal stores a SHA-256 digest, with constant-time token verification. Schema version 2 rejects stale version 1 journals rather than silently rearming. This reduces accidental credential disclosure and tests realistic child-process handoff.
+
+**Still not production authentication:** same-user writable state and an unauthenticated read-only lease file must never grant permission to alter Explorer. Production Windows IPC/ACL, peer identity, replay prevention, boot recovery, and real taskbar rollback remain open.
+
+## Stage 1e native IPC diagnostic (not a production safety channel)
+
+A standalone Windows-only named-pipe server/client prototype uses a random challenge, separate server/client HMAC proof domains, a restricted current-user DACL, remote-client rejection, and checks the kernel-reported client PID, session and impersonated user SID. Tokens are passed to standalone test subprocesses via stdin; no token is committed or added to the watchdog's journal. A portable wire-format contract can compile on Linux and Windows.
+
+**The native executable is not loaded into Explorer and is not called by the watchdog.** It performs no taskbar modifications. In particular, lack of bounded overlapped I/O, trusted executable verification, production secret provisioning, rollback of real shell state and boot recovery all remain release-blocking. Test source: [native/README.md](../native/README.md).
+
+## Stage 1f — bounded Windows pipe operations
+
+The native IPC diagnostic moved from unbounded synchronous named-pipe calls to deadline-scoped OVERLAPPED connect/read/write with CancelIoEx and completion drain on timeout. The test client rejects unexpected server PID, user SID, session and executable path. The server's random nonce and two-way HMAC remain in place.
+
+These are tests on standalone executables, not an authenticated channel inside the actual Windhawk mod. Cancellation is not a formal whole-machine timing guarantee if Windows itself hangs; verification of production watchdog executable signatures, secure key bootstrap, reboot recovery and native taskbar restoration remain mandatory.
+
+## Stage 1h — independent binary-identity proof of concept
+
+A Windows-native, **read-only standalone** verifier now compares a full executable SHA-256 against a pinned policy and can require Authenticode trust; it also checks PID creation time to reduce reused-PID mistakes. CI's unsigned test mode is **not suitable for production authorization**. Only an approved signed release, independently pinned hash/certificate identity and secure process/channel binding could become a trusted watchdog. On-disk verification is not memory attestation.
+
+None of this code is installed, injected into Explorer or linked to any shell mutation. See [WATCHDOG_IDENTITY.md](WATCHDOG_IDENTITY.md).
+
+## Stage 1i — release candidate cannot inherit trust from CI
+
+The existing Windows identity test now produces an explicitly UNTRUSTED diagnostic build manifest and stores a short-lived GitHub Actions artifact. A separate PowerShell verifier fails closed if the committed watchdog approval is absent, the SHA-256 differs, Windows Authenticode is untrusted/unsigned, or the signer thumbprint is not approved. The policy is intentionally unapproved. No signing, deployment, installation, Windhawk setting changes or shell changes are performed.
+
+A GitHub Actions artifact is **not** a release. Until a signed watchdog exists and the approval branch is independently reviewed/protected, no hash or signature from this workflow is an authority to modify Explorer. See [RELEASE_TRUST.md](RELEASE_TRUST.md).
+
+## Stage 1j — Windows-native monitoring, still mock only
+
+The new C++ executable monitors an isolated TEMP mock trial without relying on Python for the actual watcher loop. It strictly validates a durable journal and performs compare-before-restore on the fixture. It has no shell APIs, hooks, Windhawk control or installer. Native `reconcile` supports manual post-crash recovery but is not automatically invoked at Windows startup or after both recovery processes disappear. This must not be portrayed as a production 120-second restoration guarantee.
+
+The native watchdog is not signed or approved under the Stage 1i release policy and is not authenticated to the injected Explorer component. Details: [NATIVE_WATCHDOG.md](NATIVE_WATCHDOG.md).

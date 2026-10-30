@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "target": "atb-native-watchdog",
+  "approved": false,
+  "artifact_name": "atb-watchdog.exe",
+  "source_commit": null,
+  "sha256": null,
+  "signer_thumbprint": null
+}

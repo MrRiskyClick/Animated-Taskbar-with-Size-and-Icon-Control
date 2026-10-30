@@ -1,0 +1,114 @@
+name: Watchdog prototype tests
+# Feature/research branches are tested through their pull requests.
+# Direct pushes to main still receive tests. Avoid running both events per edit.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Only the latest revision of a PR needs to complete this workflow.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mock-only-watchdog:
+    name: mock watchdog / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run watchdog and Windhawk adapter tests (mock only)
+        env:
+          ATB_WATCHDOG_TEST_MODE: "1"
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+      - name: Compile native lease protocol tests
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/lease_v1_tests.cpp -o lease_v1_tests.exe
+      - name: Run native lease protocol tests
+        run: ./lease_v1_tests.exe
+      - name: Compile Python-to-C++ lease probe
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/lease_file_probe.cpp -o lease_file_probe.exe
+      - name: Test Python publisher against native lease reader
+        env:
+          ATB_WATCHDOG_TEST_MODE: "1"
+          ATB_NATIVE_LEASE_PROBE: "./lease_file_probe.exe"
+        run: python -m unittest discover -s tests -p "test_lease_interop.py" -v
+      - name: Compile Stage-1e portable IPC protocol
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/ipc_protocol_tests.cpp -o ipc_protocol_tests.exe
+      - name: Test Stage-1e portable IPC protocol
+        run: ./ipc_protocol_tests.exe
+      - name: Compile Windows-native named pipe diagnostic (NO shell changes)
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. native/ipc_probe_win.cpp -o ipc_probe_win.exe -lbcrypt -ladvapi32
+      - name: Verify native named-pipe client identity, HMAC and replay rejection
+        if: runner.os == 'Windows'
+        env:
+          ATB_NATIVE_IPC_PROBE: "./ipc_probe_win.exe"
+        run: python -m unittest discover -s tests -p "test_native_ipc.py" -v
+      - name: Compile Stage-1g read-only diagnostic peer test host (Windows only)
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. tests/diagnostic_peer_host_win.cpp -o diagnostic_peer_host_win.exe -ladvapi32
+      - name: Verify read-only peer PID/image, absent server and invalid replies
+        if: runner.os == 'Windows'
+        env:
+          ATB_NATIVE_IPC_PROBE: "./ipc_probe_win.exe"
+          ATB_READONLY_PEER_HOST: "./diagnostic_peer_host_win.exe"
+        run: python -m unittest discover -s tests -p "test_readonly_peer.py" -v
+      - name: Validate Windhawk one-file diagnostic bundle
+        run: python scripts/bundle_windhawk.py --check
+      - name: Generate one-file diagnostic source for syntax check
+        if: runner.os == 'Windows'
+        run: python scripts/bundle_windhawk.py
+      - name: Syntax-check bundled Windhawk diagnostic against CI API shim
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -Werror -D_WIN32_WINNT=0x0A00 -I. -include tests/windhawk_api_stub.hpp -fsyntax-only dist/animated-taskbar.wh.cpp
+
+      - name: Compile Stage-1h Windows executable identity policy (NO shell changes)
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. tests/binary_identity_probe_win.cpp -o binary_identity_probe_win.exe -lbcrypt -lwintrust -lcrypt32 -luuid
+      - name: Verify pinned SHA256, Authenticode fail-closed and process creation identity
+        if: runner.os == 'Windows'
+        env:
+          ATB_BINARY_IDENTITY_PROBE: "./binary_identity_probe_win.exe"
+        run: python -m unittest discover -s tests -p "test_binary_identity.py" -v
+      - name: Prove release policy refuses unsigned, unapproved and tampered binaries
+        if: runner.os == 'Windows'
+        env:
+          ATB_SOURCE_COMMIT: ${{ github.sha }}
+        shell: pwsh
+        run: ./tests/release_gate_negative.ps1 -UnsignedDiagnostic (Resolve-Path ./binary_identity_probe_win.exe).Path -SourceCommit $env:ATB_SOURCE_COMMIT
+      - name: Generate UNTRUSTED diagnostic artifact manifest
+        if: runner.os == 'Windows'
+        env:
+          ATB_SOURCE_COMMIT: ${{ github.sha }}
+        run: python scripts/build_diagnostic_manifest.py --candidate binary_identity_probe_win.exe --source-commit "$env:ATB_SOURCE_COMMIT" --output diagnostic-artifact/untrusted-manifest.json
+      - name: Archive UNTRUSTED test-only binary (no release or deployment)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: UNTRUSTED-identity-diagnostic-${{ github.run_id }}
+          path: |
+            binary_identity_probe_win.exe
+            diagnostic-artifact/untrusted-manifest.json
+          retention-days: 3
+          if-no-files-found: error
+      - name: Compile Stage-1j portable native trial journal
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -I. tests/native_mock_core_tests.cpp -o native_mock_core_tests.exe
+      - name: Verify Stage-1j portable trial parser and compare-before-restore
+        run: ./native_mock_core_tests.exe
+      - name: Compile Stage-1j Windows-native mock-only watchdog
+        if: runner.os == 'Windows'
+        run: g++ -std=c++17 -Wall -Wextra -pedantic -Werror -D_WIN32_WINNT=0x0A00 -I. native/native_mock_watchdog_win.cpp -o atb-native-mock-watchdog.exe -lbcrypt
+      - name: Failure-inject native Windows mock watchdog (NO Explorer changes)
+        if: runner.os == 'Windows'
+        env:
+          ATB_NATIVE_MOCK_WATCHDOG: "./atb-native-mock-watchdog.exe"
+          ATB_NATIVE_MOCK_TEST_MODE: "1"
+        run: python -m unittest discover -s tests -p "test_native_mock_watchdog.py" -v
