@@ -4,6 +4,14 @@
 # Requires explicit user execution for a future controlled trial.
 param([switch]$SelfTest, [switch]$TestUnresolved)
 $ErrorActionPreference='Stop'
+# This trial must NOT arm unless the matching installed Windhawk 1.7 local
+# mod can be individually disabled by this watcher at expiry. No global
+# safe mode, changes to other mods, Explorer restart, or unapproved tasks.
+$disarmModule=Join-Path $PSScriptRoot 'windhawk-17-own-mod-disarm.ps1'
+if(-not (Test-Path -LiteralPath $disarmModule)){
+ throw 'Missing exact own-mod disarm module; refusing native geometry trial'
+}
+. $disarmModule
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -195,6 +203,12 @@ function Stop-NativeTrial(){
 try{
  $lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,
                       [IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+ if(-not $SelfTest){
+  # Fail closed BEFORE the first lease heartbeat. Standard Windhawk 1.7
+  # installation must expose one exact writable per-mod Disabled REG_DWORD.
+  # Portable/missing/ambiguous states are not supported for native trials.
+  [void](Assert-AtbOwnModWritable)
+ }
  if($TestUnresolved) {
   if(-not $SelfTest){throw 'TestUnresolved is restricted to isolated CI self-test'}
   [IO.File]::WriteAllText($lease,'ATB2 unresolved',
@@ -258,9 +272,23 @@ try{
    Start-Sleep -Milliseconds 200
   }
  }finally{
-  Write-Lease "REVOKED`n"
-  Stop-NativeTrial
+  # Disarm only OUR local mod before any automatic Explorer restart could
+  # reinject it. Revoke the in-process lease even if this registry operation
+  # fails, and always attempt geometry recovery.
+  $disarmError=$null
+  if(-not $SelfTest){
+   try{
+    [void](Disable-OnlyAtbLocalMod)
+    Write-Host '[ATB] Verified our single local Windhawk mod disabled for future loads'
+   }catch{
+    $disarmError=$_
+    Write-Warning "Own-mod disable failed: $($_.Exception.Message)"
+   }
+  }
+  try { Write-Lease "REVOKED`n" }
+  finally { Stop-NativeTrial }
   Write-Host '[ATB] Trial completed; no automatic rearming'
+  if($null -ne $disarmError){ throw $disarmError }
  }
 }finally{
  if($lock){$lock.Dispose()}
