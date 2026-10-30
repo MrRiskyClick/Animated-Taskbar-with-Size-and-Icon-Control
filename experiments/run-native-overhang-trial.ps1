@@ -2,7 +2,7 @@
 # PowerShell 5.1+. Never install, register startup, change registry, auto-hide
 # settings, other Windhawk mods, Explorer's process state, or any personal files.
 # Requires explicit user execution for a future controlled trial.
-param([switch]$SelfTest)
+param([switch]$SelfTest, [switch]$TestUnresolved)
 $ErrorActionPreference='Stop'
 Add-Type @'
 using System;
@@ -195,6 +195,20 @@ function Stop-NativeTrial(){
 try{
  $lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,
                       [IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+ if($TestUnresolved) {
+  if(-not $SelfTest){throw 'TestUnresolved is restricted to isolated CI self-test'}
+  [IO.File]::WriteAllText($lease,'ATB2 unresolved',
+                           [Text.Encoding]::ASCII)
+ }
+ # Fail CLOSED after a prior watchdog crash or incomplete rollback.
+ # Overwriting a non-revoked transaction would silently rearm a taskbar
+ # whose prior geometry/region ownership has not been reconciled.
+ if([IO.File]::Exists($lease)){
+  $prior=([IO.File]::ReadAllText($lease,[Text.Encoding]::ASCII)).Trim()
+  if($prior -ne 'REVOKED'){
+   throw 'Unresolved prior ATB2 lease: refusing to rearm. Disable the local mod and inspect the taskbar before any new trial.'
+  }
+ }
  if($SelfTest){
   $before=[AtbGeoWin32+RECT]@{Left=0;Top=2118;Right=3840;Bottom=2160}
   $targetTop=2052
