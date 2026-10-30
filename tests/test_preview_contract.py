@@ -46,11 +46,26 @@ class PreviewContractTests(unittest.TestCase):
             self.assertNotIn(forbidden, self.html)
 
     def test_full_set_of_controls_and_feedback_exposed(self):
-        for control in ("iconsize", "height", "lift", "twotier", "dockbg",
+        for control in ("iconsize", "height", "lift", "iconoffset", "icongap",\n                        "pipoffset", "twotier", "dockbg",
                         "maxscale", "radius", "spring", "rise", "magnify",
                         "neighbors", "glow", "opacity", "blur", "corners",
                         "compact", "export", "reset"):
             self.assertIn(f'id="{control}"', self.html)
+
+    def test_overlapping_default_and_independent_bar_height(self):
+        # Layout contract: icon scaling never determines system bar height.
+        self.assertIn("twotier:false", self.html)
+        self.assertIn("#stage.unified #system-bar", self.html)
+        self.assertIn("height:var(--bar-height);min-height:0", self.html)
+        self.assertNotIn("height:calc(var(--icon-size) + 22px)", self.html)
+        self.assertIn("bottom:calc(7px + var(--icon-offset))", self.html)
+
+    def test_new_icon_spacing_and_pip_controls_bind_to_css(self):
+        self.assertIn("gap:var(--icon-gap)", self.html)
+        self.assertIn("bottom:calc(-7px + var(--pip-offset))", self.html)
+        self.assertIn("bottom:calc(-6px + var(--pip-offset))", self.html)
+        for key in ("--icon-gap", "--pip-offset", "--icon-offset"):
+            self.assertIn("root.style.setProperty('" + key + "'", self.html)
 
     def test_simulated_desktop_and_export_are_explicit(self):
         for expected in ("simulated", "Windows unchanged", "No system changes",
