@@ -35,6 +35,33 @@ public static class AtbGeoWin32 {
  public static extern IntPtr RemoveProp(IntPtr hwnd,string prop);
  [DllImport("user32.dll",SetLastError=true)]
  public static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
+ [DllImport("gdi32.dll",SetLastError=true)]
+ public static extern IntPtr CreateRectRgn(int left,int top,int right,int bottom);
+ [DllImport("gdi32.dll",SetLastError=true)]
+ public static extern bool DeleteObject(IntPtr region);
+ [DllImport("gdi32.dll",SetLastError=true)]
+ public static extern uint GetRegionData(IntPtr region,uint length,byte[] buffer);
+ [DllImport("user32.dll",SetLastError=true)]
+ public static extern int GetWindowRgn(IntPtr hwnd,IntPtr region);
+ public static bool RegionFingerprintMatches(IntPtr hwnd) {
+  var property = GetProp(hwnd,"ATB_REGION_FINGERPRINT_V2");
+  if(property==IntPtr.Zero)return false;
+  IntPtr region=CreateRectRgn(0,0,0,0);
+  if(region==IntPtr.Zero)return false;
+  try {
+   if(GetWindowRgn(hwnd,region)==0)return false; // ERROR, not owned
+   uint length=GetRegionData(region,0,null);
+   if(length<32 || length>1048576)return false;
+   byte[] buffer=new byte[length];
+   if(GetRegionData(region,length,buffer)!=length)return false;
+   ulong hash=14695981039346656037UL;
+   unchecked {
+    foreach(byte b in buffer) { hash ^= b; hash *= 1099511628211UL; }
+   }
+   if(hash==0)hash=1;
+   return hash==unchecked((ulong)property.ToInt64());
+  } finally { DeleteObject(region); }
+ }
  [DllImport("user32.dll",SetLastError=true)]
  public static extern IntPtr SendMessageTimeout(IntPtr hwnd,uint msg,IntPtr wParam,IntPtr lParam,uint flags,uint timeout,out IntPtr result);
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]
@@ -100,11 +127,16 @@ function Stop-NativeTrial(){
  if($mark.ToInt64() -eq [int64]$PID){
   [IntPtr]$probe=[IntPtr]::Zero
   $responsive=[AtbGeoWin32]::SendMessageTimeout($trialHwnd,0,[IntPtr]::Zero,[IntPtr]::Zero,2,250,[ref]$probe)
-  if($responsive -ne [IntPtr]::Zero){
+  if($responsive -ne [IntPtr]::Zero -and
+     [AtbGeoWin32]::RegionFingerprintMatches($trialHwnd)){
+   # No writes unless this precise region is still the one our mod
+   # published. Avoid silently removing a different Windhawk mod's region.
+   [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_REGION_FINGERPRINT_V2')
    [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_OWNED_OVERHANG_V2')
    [void][AtbGeoWin32]::SetWindowRgn($trialHwnd,[IntPtr]::Zero,$true)
   }else{
-   Write-Warning 'Explorer is unresponsive; native region cleanup deferred to mod UI-thread expiry'
+   Write-Warning 'Window region fingerprint unverified or Explorer unresponsive; preserving external state'
+   # Another component may have taken ownership: do not overwrite it.
   }
  }
  if(Same-Rect $rect $before){return}
