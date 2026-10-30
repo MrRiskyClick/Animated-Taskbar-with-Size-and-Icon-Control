@@ -685,6 +685,260 @@ struct DockAnimationContext {
 // One context per monitor (keyed by XAML instance pointer)
 std::map<void*, DockAnimationContext> g_contexts;
 
+
+/*
+ * Opt-in temporary native overhang. The user-facing system taskbar reservation
+ * is NOT altered; this only tests a taller Shell_TrayWnd HWND using the
+ * SWP_NOSENDCHANGING path objectively validated on GitHub-hosted Windows.
+ * Only a strict ATB2 watchdog lease authorizes it. No registry, auto-hide,
+ * appbar registration, Explorer restart or other-mod setting changes.
+ * Do NOT enable for a live machine until independent recovery tests pass.
+ */
+struct AtbNativeOverhang {
+    HWND hwnd=nullptr;
+    RECT original{};
+    RECT expected{};
+    RECT baselineWork{};
+    int extraPixels=0;
+    double dpiScale=1.0;
+    bool active=false;
+    winrt::weak_ref<FrameworkElement> frame;
+    Transform frameOriginal{nullptr};
+    TransformGroup ours{nullptr};
+    winrt::Windows::Foundation::Point frameOrigin{};
+    HRGN lastRegion=nullptr; // owned duplicate; never passed to Windows
+} g_atbOverhang;
+
+bool AtbEqualRect(RECT a, RECT b) {
+    return EqualRect(&a,&b)!=0;
+}
+bool AtbIsOurRegion() {
+    if(!g_atbOverhang.active || !g_atbOverhang.lastRegion) return false;
+    HRGN actual=CreateRectRgn(0,0,0,0);
+    if(!actual) return false;
+    int type=GetWindowRgn(g_atbOverhang.hwnd,actual);
+    bool ours=type!=ERROR && EqualRgn(actual,g_atbOverhang.lastRegion);
+    DeleteObject(actual);
+    return ours;
+}
+void AtbRestoreNativeOverhang() {
+    auto& a=g_atbOverhang;
+    if(!a.active) return;
+    try {
+        auto frame=a.frame.get();
+        if(frame && winrt::get_abi(frame.RenderTransform())==winrt::get_abi(a.ours)) {
+            frame.RenderTransform(a.frameOriginal);
+            frame.RenderTransformOrigin(a.frameOrigin);
+        }
+    } catch (...) { Wh_Log(L"[ATB] Could not restore frame transform"); }
+    if(IsWindow(a.hwnd)) {
+        DWORD pid=0;
+        GetWindowThreadProcessId(a.hwnd,&pid);
+        if(pid==GetCurrentProcessId()) {
+            auto marker=GetPropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+            if(marker==(HANDLE)(ULONG_PTR)atb_trial::geometry.watcherPid) {
+                if(AtbIsOurRegion()) {
+                    RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+                    // The starting region was verified absent. Other mods'
+                    // intervening region edits are left alone.
+                    SetWindowRgn(a.hwnd,nullptr,TRUE);
+                } else {
+                    RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+                    Wh_Log(L"[ATB] Another mod changed the HWND region; preserved it");
+                }
+            }
+            RECT now{};
+            if(GetWindowRect(a.hwnd,&now) && AtbEqualRect(now,a.expected)) {
+                SetWindowPos(a.hwnd,nullptr,a.original.left,a.original.top,
+                    a.original.right-a.original.left,
+                    a.original.bottom-a.original.top,
+                    SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER|
+                    SWP_NOSENDCHANGING);
+            }
+        }
+    }
+    if(a.lastRegion) DeleteObject(a.lastRegion);
+    a.lastRegion=nullptr;
+    a.frame=nullptr;
+    a.frameOriginal=nullptr;
+    a.ours=nullptr;
+    a.hwnd=nullptr;
+    a.active=false;
+    Wh_Log(L"[ATB] Native overhang restoration requested");
+}
+
+bool AtbSetRegion(HRGN next) {
+    auto& a=g_atbOverhang;
+    if(!a.active || !next) return false;
+    if(a.lastRegion && EqualRgn(next,a.lastRegion)) {
+        DeleteObject(next);
+        return true; // keep the current geometry
+    }
+    if(a.lastRegion && !AtbIsOurRegion()) {
+        DeleteObject(next);
+        Wh_Log(L"[ATB] Foreign window region detected; no overwrite");
+        // Property must be cleared before the external watcher attempts to
+        // reset it. Preserve any external region.
+        RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+        return false;
+    }
+    HRGN copy=CreateRectRgn(0,0,0,0);
+    if(!copy || CombineRgn(copy,next,nullptr,RGN_COPY)==ERROR) {
+        if(copy)DeleteObject(copy);
+        DeleteObject(next);
+        return false;
+    }
+    if(!SetWindowRgn(a.hwnd,next,TRUE)) {
+        DeleteObject(next);
+        DeleteObject(copy);
+        return false;
+    }
+    if(a.lastRegion) DeleteObject(a.lastRegion);
+    a.lastRegion=copy;
+    return true;
+}
+
+bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
+    auto& a=g_atbOverhang;
+    if(!g_settings.enableNativeOverhang || a.active ||
+       !atb_trial::geometry.valid || !taskbarFrame) return false;
+    HWND hwnd=FindWindowW(L"Shell_TrayWnd",nullptr);
+    DWORD pid=0;
+    if(!hwnd || !GetWindowThreadProcessId(hwnd,&pid) ||
+       pid!=GetCurrentProcessId()) return false;
+    RECT before{};
+    if(!GetWindowRect(hwnd,&before) ||
+       !AtbEqualRect(before,atb_trial::geometry.original)) {
+        Wh_Log(L"[ATB] Fail-closed native geometry mismatch");
+        return false;
+    }
+    if(GetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2"))return false;
+    HRGN old=CreateRectRgn(0,0,0,0);
+    if(!old)return false;
+    int nativeRegion=GetWindowRgn(hwnd,old);
+    DeleteObject(old);
+    if(nativeRegion!=ERROR) {
+        Wh_Log(L"[ATB] Existing taskbar region belongs to another component; refused");
+        return false;
+    }
+    MONITORINFO mi{sizeof(mi)};
+    if(!GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&mi))
+        return false;
+    if(before.bottom!=mi.rcMonitor.bottom)return false;
+    RECT wanted=before;
+    wanted.top=atb_trial::geometry.expectedTop;
+    const int extra=before.top-wanted.top;
+    if(extra<24||extra>160) return false;
+
+    a.hwnd=hwnd; a.original=before; a.expected=wanted;
+    a.baselineWork=mi.rcWork;
+    a.dpiScale=(double)GetDpiForWindow(hwnd)/96.0;
+    if(a.dpiScale<=0 || a.dpiScale>5.0) return false;
+    a.extraPixels=extra;
+    // Only live trial mutation: move the existing native taskbar HWND upward
+    // without asking the shell to increase its registered appbar reservation.
+    if(!SetWindowPos(hwnd,nullptr,wanted.left,wanted.top,
+          wanted.right-wanted.left,wanted.bottom-wanted.top,
+          SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER|
+          SWP_NOSENDCHANGING))return false;
+    RECT now{};
+    MONITORINFO after{sizeof(after)};
+    if(!GetWindowRect(hwnd,&now) || !AtbEqualRect(now,wanted) ||
+       !GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&after) ||
+       !AtbEqualRect(after.rcWork,a.baselineWork)) {
+        // Never continue if the system increases reserved desktop space.
+        if(AtbEqualRect(now,wanted)) {
+            SetWindowPos(hwnd,nullptr,before.left,before.top,
+                 before.right-before.left,before.bottom-before.top,
+                 SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSENDCHANGING);
+        }
+        Wh_Log(L"[ATB] Extended native HWND or work-area invariant failed; aborted");
+        return false;
+    }
+    a.active=true;
+    // Native taskbar controls were previously arranged for the compact strip.
+    // Shift the existing XAML TaskbarFrame (background/buttons/tray) to the
+    // bottom of the enlarged HWND, preserving its original transform.
+    a.frame=taskbarFrame;
+    a.frameOriginal=taskbarFrame.RenderTransform();
+    a.frameOrigin=taskbarFrame.RenderTransformOrigin();
+    TransformGroup group;
+    if(a.frameOriginal)group.Children().Append(a.frameOriginal);
+    TranslateTransform t;
+    t.Y((double)extra/a.dpiScale);
+    group.Children().Append(t);
+    a.ours=group;
+    taskbarFrame.RenderTransform(group);
+
+    if(!SetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2",
+             (HANDLE)(ULONG_PTR)atb_trial::geometry.watcherPid)) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    // Only the native bottom strip accepts hits until an actual magnified
+    // icon extends into the overhang. Never grab empty desktop pixels.
+    HRGN region=CreateRectRgn(0,extra,wanted.right-wanted.left,
+                              wanted.bottom-wanted.top);
+    if(!AtbSetRegion(region)) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    Wh_Log(L"[ATB] Native overhang trial active: +%dpx, reserved desktop unchanged",
+           extra);
+    return true;
+}
+
+void AtbUpdateNativeOverhangRegion(DockAnimationContext const& ctx) {
+    auto& a=g_atbOverhang;
+    if(!a.active)return;
+    RECT now{};
+    if(!GetWindowRect(a.hwnd,&now)||!AtbEqualRect(now,a.expected)) {
+        Wh_Log(L"[ATB] Shell changed taskbar geometry; disabling trial overhang");
+        AtbRestoreNativeOverhang();
+        return;
+    }
+    const int width=now.right-now.left, height=now.bottom-now.top;
+    HRGN full=CreateRectRgn(0,a.extraPixels,width,height);
+    if(!full)return;
+    for(auto const& icon:ctx.icons) {
+        auto element=icon.element.get();
+        if(!element)continue;
+        double wave=std::clamp(icon.state.waveScale,1.0,g_settings.maxScale);
+        // Include second bounce transform in hit bounds.
+        auto group=element.RenderTransform().try_as<TransformGroup>();
+        if(group && group.Children().Size()>=3){
+            auto bounce=group.Children().GetAt(2).try_as<ScaleTransform>();
+            if(bounce)wave*=bounce.ScaleX();
+        }
+        const double w=element.ActualWidth()*wave*a.dpiScale;
+        const double h=element.ActualHeight()*wave*a.dpiScale;
+        const double x=(icon.originalCenterX+icon.state.waveTranslateX)*
+                         a.dpiScale;
+        const double cy=a.extraPixels+(a.original.bottom-a.original.top)*0.5;
+        const int x0=(int)std::floor(x-w/2.0-2.0);
+        const int x1=(int)std::ceil(x+w/2.0+2.0);
+        const int y0=(int)std::floor(cy-h/2.0-5.0);
+        const int y1=(int)std::ceil(cy+h/2.0+2.0);
+        if(y0>=a.extraPixels)continue;
+        HRGN shape=CreateRectRgn(std::max(0,x0),std::max(0,y0),
+                 std::min(width,x1),std::min(height,y1));
+        if(shape) {
+            CombineRgn(full,full,shape,RGN_OR);
+            DeleteObject(shape);
+        }
+    }
+    if(!AtbSetRegion(full))AtbRestoreNativeOverhang();
+}
+
+bool AtbNativeWorkareaStillPreserved() {
+    auto& a=g_atbOverhang;
+    if(!a.active)return true;
+    MONITORINFO mi{sizeof(mi)};
+    return GetMonitorInfoW(
+            MonitorFromWindow(a.hwnd,MONITOR_DEFAULTTONEAREST),&mi) &&
+           AtbEqualRect(mi.rcWork,a.baselineWork);
+}
+
 // UI-thread heartbeat: unlike pointer/render-only callbacks, this continues
 // to fire while the cursor is idle. It prevents an expired trial from leaving
 // static scaled transforms behind after the rendering loop has stopped.
