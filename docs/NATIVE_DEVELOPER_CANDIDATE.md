@@ -103,6 +103,26 @@ mode only, but runtime integration with the user's particular Windhawk
 installation is not validated. Windhawk 2.0 alpha introduces a CLI,
 but this project does not require the user to install alpha software.
 
+## User decision: manual restart or manual reboot ONLY
+
+The user will manually restart Windows Explorer or reboot Windows if
+absolutely necessary. **No automatic Explorer restart, termination or
+forced reboot is permitted.** The mod must not add services, scheduled
+tasks, startup entries or settings changes to achieve automatic recovery.
+
+The experimental HWND position, HWND region, XAML transforms and pips
+are runtime process/window state; they are not written as permanent
+Windows preferences. After manual Explorer restart/reboot, Windows
+recreates these objects. The watchdog's only intentional persistent
+setting is `Disabled=1` for this exact local Windhawk mod so the
+experiment cannot silently reapply. A revoked/stale lease remains
+non-executable data in the user's local app data folder.
+
+**This is an architectural expectation, not a guarantee of zero possible
+Windows bugs.** See
+[MANUAL_RESTART_RECOVERY.md](MANUAL_RESTART_RECOVERY.md) for exact
+state scope, CI assertions and user-controlled recovery steps.
+
 ## Release / installation decision
 
 The native source compiles, but the independent recovery gate established in
