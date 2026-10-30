@@ -14,7 +14,7 @@ The file is a modified derivative of **Ph0en1x-dev / Taskbar Dock Animation v1.9
 - One set of XAML transforms, adjusted together each render frame so position follows *current* animated scale rather than a second lagging translation spring.
 - Adjustable magnification `MaxScale`, effect radius, speed `LerpSpeed`, fade `FocusDuration`, optional idle bounce, and app-only animation mode.
 - Passive by default; an OFF→ON transition for `ArmOneShotPreview` arms one 120-second period. The time cannot be extended by changing other settings. The setting is persistent, but no trial auto-arms when Explorer loads or restarts.
-- Restores neutral scale and translation on focus exit, mod disable, settings change or while the rendering loop observes expiry.
+- Saves the initial XAML `RenderTransform` and `RenderTransformOrigin` for elements it owns. Skips an icon with a non-null pre-existing transform instead of overwriting another mod. Restores initial properties only when its own transform is still installed (settings change, normal unload, observed expiry). This can leave some icons unanimated on heavily styled taskbars and cannot repair Explorer if it freezes or crashes.
 
 ## NOT yet implemented from the v0.4 browser design
 
