@@ -48,6 +48,20 @@ exit 0
  if(-not (Disable-OnlyAtbLocalMod -CIOnlyFixture)){
   throw 'Repeated own-mod disable should be idempotent'
  }
+ # Another native dock mod sharing the same pointer/XAML hooks must
+ # be detected READ-ONLY before the native ATB2 trial may arm.
+ $competing=Join-Path $root 'taskbar-dock-animation'
+ New-Item -Path $competing -Force | Out-Null
+ New-ItemProperty -Path $competing -Name Disabled -Value 0 -PropertyType DWord -Force | Out-Null
+ $rejected=$false
+ try { Assert-NoAtbCompetingNativeDock -CIOnlyFixture }
+ catch { $rejected=$true }
+ if(-not $rejected){throw 'Enabled competing native dock animation was not rejected'}
+ if((Get-ItemProperty -LiteralPath $competing -Name Disabled).Disabled -ne 0){
+  throw 'SAFETY FAILURE: competing mod disabled without user action'
+ }
+ Set-ItemProperty -LiteralPath $competing -Name Disabled -Value 1
+ Assert-NoAtbCompetingNativeDock -CIOnlyFixture
  Set-ItemProperty -LiteralPath $ours -Name Disabled -Value 2
  $refused=$false
  try { Disable-OnlyAtbLocalMod -CIOnlyFixture | Out-Null }
