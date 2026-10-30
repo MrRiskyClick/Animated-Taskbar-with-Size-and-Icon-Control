@@ -115,6 +115,7 @@ jobs:
             throw 'SAFETY REGRESSION: unresolved watchdog journal unexpectedly rearmed'
           }
           Write-Host 'PASS: unresolved prior ATB2 lease refuses rearm'
+          $global:LASTEXITCODE = 0
       - name: Validate native source guard contract
         shell: pwsh
         run: python tests/test_native_mod_contract.py
