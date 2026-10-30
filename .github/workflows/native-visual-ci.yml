@@ -52,7 +52,7 @@ jobs:
       - name: Compile and execute disposable owned-HWND appbar/window height probe
         shell: pwsh
         run: |
-          & clang++ -std=c++17 -O2 tests/win32_disposable_appbar.cpp -o "$env:RUNNER_TEMP/atb-owned-appbar.exe" -lshell32 -luser32
+          & clang++ -std=c++17 -O2 tests/win32_disposable_appbar.cpp -o "$env:RUNNER_TEMP/atb-owned-appbar.exe" -lshell32 -luser32 -lgdi32
           if ($LASTEXITCODE -ne 0) { throw 'Owned appbar probe compilation failed' }
           & "$env:RUNNER_TEMP/atb-owned-appbar.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Owned appbar probe failed' }
