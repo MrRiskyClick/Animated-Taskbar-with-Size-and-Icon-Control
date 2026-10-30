@@ -22,6 +22,31 @@ However, its division of responsibilities is a useful design reference:
 | Multi-monitor | Separate dock windows selected per monitor | Track monitor/DPI and taskbar HWND per display; cannot infer all displays from primary 3840×2160 inspection |
 | Pinned/running | Own mirrored app model; import from pinned .lnk files | Reject for our project: do not replace native Windows state with a parallel app model |
 
+## Specific useful implementation: appbar reservation smaller than window
+
+In Nectar's `src-tauri/src/services.rs::register_dock_appbar_inner`,
+`ph` is the **actual physical height** of its dock window, while `pr`
+is a smaller **reserved strip** (56 logical units multiplied by the Nectar
+scale and monitor DPI scale). The code:
+
+1. Registers the dock's own HWND using `ABM_NEW`.
+2. Calls `SHAppBarMessage(ABM_QUERYPOS)` and `ABM_SETPOS` with a rectangle
+   only `pr` pixels high.
+3. Independently calls `SetWindowPos` to place the actual HWND at the bottom
+   with height `ph`.
+
+This is **strong evidence that reservation and visual window geometry can
+be deliberately decoupled for a user-owned independent dock window**.
+It is *not* evidence that we can perform those same operations on
+Windows' own `Shell_TrayWnd`, because Windows shell code owns and continually
+recalculates the native taskbar window's position and appbar registration.
+
+Our next safe prototype is a disposable **test HWND owned by the test process
+on a GitHub-hosted Windows runner**. It must not touch
+`Shell_TrayWnd`, taskbar auto-hide, pinned apps or Windhawk installation.
+Only after successful independent recovery design should a separate native
+Shell_TrayWnd integration ever be attempted.
+
 ## Verified implementation points
 
 - `src-tauri/src/main.rs`: startup crash marker + normal window close
