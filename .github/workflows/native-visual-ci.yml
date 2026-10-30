@@ -56,6 +56,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Owned appbar probe compilation failed' }
           & "$env:RUNNER_TEMP/atb-owned-appbar.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Owned appbar probe failed' }
+      - name: Disposable REAL Explorer HWND overhang probe with independent watchdog
+        shell: pwsh
+        run: |
+          & clang++ -std=c++17 -O2 -municode tests/win32_ci_native_taskbar_overhang.cpp -o "$env:RUNNER_TEMP/atb-ci-native-probe.exe" -luser32
+          if ($LASTEXITCODE -ne 0) { throw 'Native geometry probe compiler error' }
+          $oldCI = $env:GITHUB_ACTIONS
+          $env:GITHUB_ACTIONS = 'false'
+          & "$env:RUNNER_TEMP/atb-ci-native-probe.exe"
+          if ($LASTEXITCODE -ne 2) { throw 'CI-only refusal gate failed' }
+          $env:GITHUB_ACTIONS = $oldCI
+          & "$env:RUNNER_TEMP/atb-ci-native-probe.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native geometry/watchdog probe failed' }
       - name: Parse watchdog PowerShell without executing outside fixture
         shell: pwsh
         run: |
