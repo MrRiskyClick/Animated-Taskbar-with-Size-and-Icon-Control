@@ -611,7 +611,13 @@ void ApplyAnimation(double mouseX, DockAnimationContext& ctx, double intensity, 
         state.waveScale = g_settings.lerpSpeed > 0.0 ?
             state.waveScale + (desired - state.waveScale) * alpha : desired;
         state.waveScale = std::clamp(state.waveScale, 1.0, g_settings.maxScale);
-        extraWidths[i] = (state.waveScale - 1.0) *
+        // Bounce is a SECOND scale transform; include its live multiplier
+        // in the width budget or the currently bouncing icon can intersect
+        // a neighbour despite correct translation for the primary scale.
+        const double bounceMultiplier =
+            (g_isBouncing && i == closestIconIndex) ? bounceScaleFactor : 1.0;
+        const double displayedScale = state.waveScale * bounceMultiplier;
+        extraWidths[i] = (displayedScale - 1.0) *
                          element.ActualWidth() * nonOverlappingSpacing;
         totalExpansion += extraWidths[i];
     }
