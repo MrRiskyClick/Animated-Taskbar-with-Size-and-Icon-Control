@@ -14,7 +14,8 @@
 // @description:pt-BR Anima os ícones da barra de tarefas ao passar o mouse, como no macOS
 // @description:it-IT Anima le icone della barra delle applicazioni al passaggio del mouse, come su macOS
 // @version           0.2.0
-// @author            Animated Taskbar contributors (based on Ph0en1x-dev, MIT)
+// @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
+// @license           GPL-3.0
 // @github            https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
 // @include           explorer.exe
 // @architecture      x86-64
