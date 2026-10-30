@@ -1186,7 +1186,11 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
 
                         if (SigDifferent(sig, ctx.lastSig)) {
                             RefreshIconPositions(ctx);
-                        } else {
+                        } else if (currentIntensity <= 0.001) {
+                            // Never rebase the resting icon centers from an
+                            // element while it is scaled/translated by us.
+                            // Otherwise each 120ms check feeds our own push
+                            // offsets back into the next hover calculation.
                             RebaseIconGeometryFast(ctx);
                         }
 
