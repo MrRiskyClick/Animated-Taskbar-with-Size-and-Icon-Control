@@ -895,7 +895,7 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     RECT before{};
     if(!GetWindowRect(hwnd,&before) ||
        !AtbEqualRect(before,atb_trial::geometry.original)) {
-        Wh_Log(L"[ATB] Fail-closed native geometry mismatch");
+        Wh_Log(L"[ATB] Overhang refused: native HWND rectangle differs from watcher baseline");
         return false;
     }
     if(GetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2"))return false;
@@ -904,7 +904,7 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     int nativeRegion=GetWindowRgn(hwnd,old);
     DeleteObject(old);
     if(nativeRegion!=ERROR) {
-        Wh_Log(L"[ATB] Existing taskbar region belongs to another component; refused");
+        Wh_Log(L"[ATB] Overhang refused: native HWND already has a region; preserving foreign component");
         return false;
     }
     MONITORINFO mi{sizeof(mi)};
@@ -2127,6 +2127,19 @@ int WINAPI TaskbarFrame_OnPointerMoved_Hook(void* pThis, void* pArgs) {
     if (g_contexts.find(pThis) == g_contexts.end()) {
         InitializeAnimationHooks(pThis, element);
         Wh_Log(L"DockAnimation: Initialized via OnPointerMoved (%s)", className.c_str());
+    }
+    // The first event can arrive before native XAML has settled after
+    // SetWindowPos. Do not make a single failed layout probe permanent:
+    // retry at most once every 700 ms during the bounded active lease.
+    // Never retry after the deadline or on a context/window mismatch.
+    if(g_settings.enableNativeOverhang && !g_atbOverhang.active &&
+       atb_trial::geometry.valid) {
+        static ULONGLONG lastAttemptTick=0;
+        const ULONGLONG tick=GetTickCount64();
+        if(tick-lastAttemptTick>=700) {
+            lastAttemptTick=tick;
+            AtbStartNativeOverhang(element);
+        }
     }
     // Forward event to existing logic
     OnTaskbarPointerMoved(pThis, args);
