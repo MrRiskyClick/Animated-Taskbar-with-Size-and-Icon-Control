@@ -28,6 +28,12 @@ class LocalModContract(unittest.TestCase):
         self.assertIn("g_liveArmed.store(false);", c)
         self.assertIn("requested && !g_previousArmSetting", c)
         self.assertIn("g_liveDeadline.store(GetTickCount64() + 120000ULL)", c)
+        self.assertIn("if (prior) return;", c)
+        self.assertIn("RestoreOwnedXamlTransforms();", c)
+        self.assertIn("g_ownedTransforms.emplace(ownedKey", c)
+        self.assertIn("recorded->second.installed", c)
+        self.assertIn("element.RenderTransform(entry.second.previous);", c)
+        self.assertIn("element.RenderTransformOrigin(entry.second.previousOrigin);", c)
         self.assertIn("if (!IsLiveTrialActive()) return original();", c)
         self.assertIn("if (!IsLiveTrialActive()) {", c)
 
