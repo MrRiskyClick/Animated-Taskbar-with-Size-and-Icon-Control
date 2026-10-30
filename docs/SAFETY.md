@@ -61,12 +61,11 @@ The user has explicitly selected **manual Explorer restart/reboot** as the
 only permissible process-level recovery escalation. The watchdog must never
 call a process termination/restart command or reboot Windows. If an
 unresponsive Explorer refuses async geometry restoration, record the
-failure, disable only our local Windhawk mod for the *next* process load,
+failure, revoke the PID-bound lease to block the mod at its next process load,
 and permit the user to restart Explorer or reboot on their own terms.
 
 After a manual restart/reboot, all approved taskbar mutations must be
-transient XAML or HWND state. Only the local mod's persistent
-`Disabled=1` value and revoked/unresolved per-user lease file may remain.
+transient XAML or HWND state. Only the revoked/unresolved per-user lease file may remain. Windhawk's existing Enabled setting must not be changed by the watchdog; it can remain on but the mod must reject expired leases.
 No taskbar auto-hide, height preference, appbar registration, grouping,
 tray or other Windhawk mod settings may be persisted.
 
