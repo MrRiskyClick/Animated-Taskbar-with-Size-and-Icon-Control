@@ -193,8 +193,9 @@ BOOL Wh_ModInit() {
     HMODULE kb = GetModuleHandleW(L"kernelbase.dll");
     auto p = (decltype(&LoadLibraryExW))GetProcAddress(kb, "LoadLibraryExW");
     if (!p) return FALSE;
-    return WindhawkUtils::SetFunctionHook(p, LoadLibraryExWHook,
-                                          &g_loadLibraryExWOriginal);
+    WindhawkUtils::SetFunctionHook(p, LoadLibraryExWHook,
+                                   &g_loadLibraryExWOriginal);
+    return TRUE;
 }
 
 void Wh_ModAfterInit() {
