@@ -90,7 +90,7 @@ class NativeContract(unittest.TestCase):
         self.assertIn('ATB_REGION_FINGERPRINT_V2', MOD)
         self.assertIn('AtbOurRegionFingerprintMatches()', MOD)
         self.assertIn('GetRegionData(region,0,nullptr)', MOD)
-        self.assertIn('GetWindowRgn(a.hwnd,actual)', MOD)
+        self.assertIn('GetWindowRgn(a.hwnd,current)', MOD)
         watcher = (ROOT / 'experiments' / 'run-native-overhang-trial.ps1').read_text(encoding='utf-8')
         self.assertIn('RegionFingerprintMatches($trialHwnd)', watcher)
         self.assertIn('RegionFingerprintSelfTest()', watcher)
