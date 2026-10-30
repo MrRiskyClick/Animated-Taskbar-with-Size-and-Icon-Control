@@ -81,8 +81,13 @@ class NativeContract(unittest.TestCase):
     def test_native_root_grows_but_original_height_children_remain_bottom_anchored(self):
         self.assertIn('taskbarFrame.Height(a.frameAppliedHeight);', MOD)
         self.assertIn('const double extraDip=(double)extra/a.dpiScale;', MOD)
-        self.assertIn('original.appliedHeight=child.ActualHeight();', MOD)
+        self.assertIn('original.appliedHeight=rootStripHeight;', MOD)
+        self.assertIn('child.Name()==L"RootGrid"', MOD)
+        self.assertIn('rootGrid.Height(rootStripHeight);', MOD)
+        self.assertIn('rootGrid.RenderTransform(translated);', MOD)
         self.assertIn('a.shiftedChildren.push_back(std::move(original));', MOD)
+        self.assertIn('element.TransformToVisual(visualRoot).TransformBounds(', MOD)
+        self.assertNotIn('auto shouldShift=[]', MOD)
         self.assertIn('for(auto it=a.shiftedChildren.rbegin();', MOD)
         self.assertIn('child.Height(it->originalHeight)', MOD)
 
