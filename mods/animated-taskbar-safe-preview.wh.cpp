@@ -332,6 +332,36 @@ struct TaskbarIconInfo {
     IconAnimState state;
 };
 
+// Per-element property baselines. They are XAML-thread-affine, never written
+// to registry or copied across Windhawk mods. We only restore our own exact
+// transform instance if no third party replaced it in the meantime.
+struct OwnedXamlTransform {
+    winrt::weak_ref<FrameworkElement> element;
+    Transform previous{nullptr};
+    TransformGroup installed{nullptr};
+    winrt::Windows::Foundation::Point previousOrigin{};
+};
+std::unordered_map<void*, OwnedXamlTransform> g_ownedTransforms;
+
+void RestoreOwnedXamlTransforms() {
+    for (auto& entry : g_ownedTransforms) {
+        try {
+            auto element = entry.second.element.get();
+            if (!element) continue;
+            auto current = element.RenderTransform();
+            if (current && entry.second.installed &&
+                winrt::get_abi(current) ==
+                    winrt::get_abi(entry.second.installed)) {
+                element.RenderTransform(entry.second.previous);
+                element.RenderTransformOrigin(entry.second.previousOrigin);
+            }
+        } catch (...) {
+            Wh_Log(L"ATB: could not restore an icon transform safely");
+        }
+    }
+    g_ownedTransforms.clear();
+}
+
 struct HostSignature {
     int count = -1;
     double width = -1.0;
@@ -869,14 +899,37 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
         try {
             if (!element) return;
 
-            auto tg = element.RenderTransform().try_as<TransformGroup>();
-            if (!tg || tg.Children().Size() < 4) {
+            // This mod must NOT replace another mod's RenderTransform.
+            // A non-null preexisting transform means ownership is unknown:
+            // skip it rather than guessing or resetting somebody else's UI.
+            void* ownedKey = winrt::get_abi(element);
+            auto recorded = g_ownedTransforms.find(ownedKey);
+            TransformGroup tg{nullptr};
+            if (recorded == g_ownedTransforms.end()) {
+                auto prior = element.RenderTransform();
+                if (prior) return;
                 tg = TransformGroup();
-                tg.Children().Append(ScaleTransform());       // 0 waveScale
-                tg.Children().Append(TranslateTransform());   // 1 waveTranslate
-                tg.Children().Append(ScaleTransform());       // 2 bounceScale
-                tg.Children().Append(TranslateTransform());   // 3 bounceTranslate
+                tg.Children().Append(ScaleTransform());       // wave scale
+                tg.Children().Append(TranslateTransform());   // push X
+                tg.Children().Append(ScaleTransform());       // bounce scale
+                tg.Children().Append(TranslateTransform());   // bounce Y
+                OwnedXamlTransform baseline;
+                baseline.element = element;
+                baseline.previous = prior;
+                baseline.previousOrigin = element.RenderTransformOrigin();
+                baseline.installed = tg;
+                g_ownedTransforms.emplace(ownedKey, std::move(baseline));
                 element.RenderTransform(tg);
+            } else {
+                auto same = recorded->second.element.get();
+                if (!same || winrt::get_abi(same) != ownedKey) {
+                    g_ownedTransforms.erase(recorded);
+                    return;
+                }
+                tg = element.RenderTransform().try_as<TransformGroup>();
+                if (!tg || winrt::get_abi(tg) !=
+                           winrt::get_abi(recorded->second.installed))
+                    return;
             }
 
             float yOrigin = g_settings.disableVerticalBounce
@@ -1104,6 +1157,7 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
                 entry.second.icons.clear();
                 entry.second.isInitialized = false;
             }
+            RestoreOwnedXamlTransforms();
             g_activeContextKey = nullptr;
             return;
         }
@@ -1493,6 +1547,7 @@ void Wh_ModBeforeUninit() {
                         ResetAllIconScales(ctx.icons);
                     }
                     g_contexts.clear();
+                    RestoreOwnedXamlTransforms();
                     Wh_Log(L"DockAnimation: UI contexts cleaned up.");
                 }
                 catch (...) {}
@@ -1532,6 +1587,7 @@ void Wh_ModSettingsChanged() {
                         ctx.isInitialized = false;
                         ctx.icons.clear();
                     }
+                    RestoreOwnedXamlTransforms();
                     g_isBouncing = false;
                 } catch (...) {}
             },
