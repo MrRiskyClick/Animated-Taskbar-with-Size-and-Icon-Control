@@ -2,6 +2,7 @@
 # No administrator rights, registry writes, taskbar edits, process termination,
 # service installation, or edits to other Windhawk mods.
 # All active trial effects require this independent process to remain responsive.
+param([switch]$SelfTest)
 $ErrorActionPreference = 'Stop'
 Add-Type @'
 using System;
@@ -16,7 +17,12 @@ public static class AtbWin32 {
     public static extern bool MoveFileEx(string oldPath, string newPath, uint flags);
 }
 '@
-$base = Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial'
+$durationMs = if ($SelfTest) { 2500 } else { 120000 }
+$base = if ($SelfTest) {
+    Join-Path $env:TEMP ('atb-dev-selftest-' + $PID)
+} else {
+    Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial'
+}
 [System.IO.Directory]::CreateDirectory($base) | Out-Null
 $lease = Join-Path $base 'lease.v1'
 $mutexPath = Join-Path $base 'watcher.lock'
@@ -33,7 +39,7 @@ try {
     if ($explorerPid -eq 0) { throw "Could not read the taskbar Explorer PID." }
 
     $startUtc = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    $deadlineUtc = $startUtc + 120000
+    $deadlineUtc = $startUtc + $durationMs
     $clock = [System.Diagnostics.Stopwatch]::StartNew()
     $revoked = $false
     function Publish-Lease([string]$content) {
@@ -53,11 +59,12 @@ try {
     }
 
     Write-Host ("[ATB] Trial watcher PID {0}, Explorer PID {1}" -f $PID, $explorerPid)
-    Write-Host "[ATB] Lease expires after 120 seconds. Enable the local Windhawk trial mod."
+    Write-Host ("[ATB] Lease expires after {0} milliseconds." -f $durationMs)
+    if (-not $SelfTest) { Write-Host "[ATB] Enable the local Windhawk trial mod." }
     Write-Host "[ATB] This is NOT a production-grade recovery agent."
 
     try {
-        while ($clock.ElapsedMilliseconds -lt 120000) {
+        while ($clock.ElapsedMilliseconds -lt $durationMs) {
             $currentHwnd = [AtbWin32]::FindWindow('Shell_TrayWnd', $null)
             [uint32]$currentExplorerPid = 0
             if ($currentHwnd -eq [IntPtr]::Zero) { break }
