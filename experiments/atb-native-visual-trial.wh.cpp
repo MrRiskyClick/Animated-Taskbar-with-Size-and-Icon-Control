@@ -856,6 +856,7 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
         return false;
     }
     a.active=true;
+    try {
     // Native taskbar controls were previously arranged for the compact strip.
     // Shift the existing XAML TaskbarFrame (background/buttons/tray) to the
     // bottom of the enlarged HWND, preserving its original transform.
@@ -886,6 +887,11 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     Wh_Log(L"[ATB] Native overhang trial active: +%dpx, reserved desktop unchanged",
            extra);
     return true;
+    } catch (...) {
+        Wh_Log(L"[ATB] Exception while setting up native overhang; restoring baseline");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
 }
 
 void AtbUpdateNativeOverhangRegion(DockAnimationContext const& ctx) {
