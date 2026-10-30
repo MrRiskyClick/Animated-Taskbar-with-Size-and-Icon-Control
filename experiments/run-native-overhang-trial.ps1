@@ -1,6 +1,9 @@
 # GitHub-developed experimental independent taskbar-geometry lease/watchdog.
-# PowerShell 5.1+. Never install, register startup, change registry, auto-hide
-# settings, other Windhawk mods, Explorer's process state, or any personal files.
+# PowerShell 5.1+. No installer, startup task, shell restart, auto-hide
+# change or writes to unrelated Windhawk mods. At expiry this watcher writes
+# ONLY its own installed-mode Windhawk 1.7 local-mod Disabled REG_DWORD to 1.
+# That narrowly scoped, persistent state change prevents silent reapplication
+# if Explorer restarts. Requires registry write permission before arming.
 # Requires explicit user execution for a future controlled trial.
 param([switch]$SelfTest, [switch]$TestUnresolved)
 $ErrorActionPreference='Stop'
