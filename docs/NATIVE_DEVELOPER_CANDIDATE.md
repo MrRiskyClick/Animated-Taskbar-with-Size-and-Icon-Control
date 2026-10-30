@@ -47,11 +47,14 @@ manual UI acceptance are complete.
   FNV-1a fingerprint match the actual Win32 region, protecting concurrent
   modifications from other taskbar mods. The watcher also REFUSES to rearm
   an unresolved previous lease. It creates no service or scheduled task.
-  On expiry, it writes exactly one persistent setting:
-  `Disabled=1` for `local@atb-animated-taskbar-trial` under the standard
-  installed Windhawk 1.7 registry key, to prevent future reinjection.
-  The watcher must verify exact own-mod write access BEFORE issuing a lease.
-  Portable/custom-storage Windhawk is unsupported and fails closed.
+  On expiry it writes **NO registry settings**. Standard user accounts
+  cannot write Windhawk's protected installed-mode HKLM key, and must NOT
+  elevate or change permissions. Instead the lease is pinned to the original
+  Explorer PID and live watcher process with a 120-second deadline. A
+  manual Explorer restart/reboot cannot reuse that live expiring lease.
+  The Windhawk UI may still show this mod enabled after expiry, but it is
+  inert; the user can switch it off manually. Read-only inspection of
+  installed Windhawk 1.7 is required. Portable/custom storage fails closed.
 
 ## What GitHub Actions has objectively verified
 
@@ -69,9 +72,9 @@ manual UI acceptance are complete.
   accesses Explorer, verifies window-region fingerprint conflict detection,
   and finishes with the lease marked `REVOKED`.
 - A negative test verifies that a prior unresolved lease cannot silently
-  rearm. An additional isolated HKCU registry fixture checks that the
-  Windhawk 1.7 disarm writes only this mod's Disabled value (and refuses
-  malformed state); no actual Windhawk registry entry is touched in CI.
+  rearm. An additional isolated HKCU registry fixture tests **read-only**
+  inspection of the own mod and competing mods, rejecting malformed
+  states and ensuring that no Windhawk registry value is modified.
 
 ## What is NOT yet verified
 
@@ -98,10 +101,10 @@ manual UI acceptance are complete.
 **Windhawk version note:** Windhawk 1.7.3 has no supported CLI for disabling
 a single mod; its original source stores `Disabled` as a REG_DWORD and
 the standard installation uses its `Engine\\Mods` registry configuration.
-A narrowly scoped own-mod disarm is implemented for this exact installed
-mode only, but runtime integration with the user's particular Windhawk
-installation is not validated. Windhawk 2.0 alpha introduces a CLI,
-but this project does not require the user to install alpha software.
+The independent watcher deliberately does NOT write this key, because
+normal users lack permission. Only read-only inspection is supported. The
+lease gate (watcher alive, fresh heartbeat, exact Explorer PID and deadline)
+prevents reapplication after expiration or a manual Explorer restart.
 
 ## User decision: manual restart or manual reboot ONLY
 
@@ -113,10 +116,11 @@ tasks, startup entries or settings changes to achieve automatic recovery.
 The experimental HWND position, HWND region, XAML transforms and pips
 are runtime process/window state; they are not written as permanent
 Windows preferences. After manual Explorer restart/reboot, Windows
-recreates these objects. The watchdog's only intentional persistent
-setting is `Disabled=1` for this exact local Windhawk mod so the
-experiment cannot silently reapply. A revoked/stale lease remains
-non-executable data in the user's local app data folder.
+recreates these objects. The watchdog changes **no persistent Windhawk setting**. Its only
+persistent data is the revoked/stale lease in the user's local app-data
+folder. The mod can remain shown as enabled in Windhawk, but an expired
+or mismatched lease prevents it from running. The user can manually
+disable the switch afterward.
 
 **This is an architectural expectation, not a guarantee of zero possible
 Windows bugs.** See
