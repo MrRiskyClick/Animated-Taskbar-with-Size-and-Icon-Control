@@ -148,3 +148,14 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
           Write-Host "WINDSHA256=$hash"
           Write-Host "DLL compiled for isolated GitHub CI only; never installed or run."
+      - name: Archive reviewed source only (no binary installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: atb-native-preview-source
+          retention-days: 7
+          path: |
+            experiments/atb-native-visual-trial.wh.cpp
+            experiments/run-native-overhang-trial.ps1
+            experiments/THIRD_PARTY_NOTICES.md
+            experiments/LICENSE
+            docs/NATIVE_DEVELOPER_CANDIDATE.md
