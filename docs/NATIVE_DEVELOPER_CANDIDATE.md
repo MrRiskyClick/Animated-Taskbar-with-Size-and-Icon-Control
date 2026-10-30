@@ -76,6 +76,29 @@ manual UI acceptance are complete.
   inspection of the own mod and competing mods, rejecting malformed
   states and ensuring that no Windhawk registry value is modified.
 
+## Manual clipping defect — October 30, 2026
+
+The user completed the first supervised 120-second Windows trial with the
+experimental overhang setting enabled, and **observed actual icons still
+clipping at the taskbar edge**. The watcher completed normally, revoked the
+ATB2 lease, and printed that the native mod was inert. This is a real
+behavioral failure; earlier CI geometry probes were not visual proof.
+
+The subsequent unverified code change replaces the fragile depth-1/2
+TaskbarBackground/ItemsRepeater/Gripper shifting with the single direct
+`RootGrid` child of `TaskbarFrame` (the hierarchy also used by the
+upstream Windhawk taskbar-multirow mod). The root frame grows while the
+original-height RootGrid is translated down once. For the native Win32
+hit-test mask, each live icon uses `TransformToVisual(XamlRoot.Content)`
+and `TransformBounds`, avoiding synthetic Y positions and failing
+gracefully when transform bounds are unavailable. After a refused first
+layout probe, pointer movement retries no more than every 700ms while the
+original strict ATB2 lease is valid. More precise refusal logging was added.
+
+**Manual verification is required after the new CI passes.** Do not mark
+the clipping defect fixed merely because the source compiles or the
+GitHub-hosted native HWND probe passes.
+
 ## What is NOT yet verified
 
 - The actual XAML `TaskbarFrame` **painting above the original frame**
