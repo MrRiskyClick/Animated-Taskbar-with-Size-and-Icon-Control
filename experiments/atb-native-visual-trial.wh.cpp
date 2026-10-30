@@ -413,6 +413,46 @@ struct IconAnimState {
 };
 
 // Per-monitor context
+
+/*
+ * Preserve each button's RenderTransform and RenderTransformOrigin exactly.
+ * This is essential for coexistence with independent Taskbar Styler themes:
+ * replace only what we own and never overwrite an intervening style edit.
+ */
+struct AtbTransformSnapshot {
+    winrt::weak_ref<FrameworkElement> element;
+    Transform original{nullptr};
+    TransformGroup ours{nullptr};
+    winrt::Windows::Foundation::Point originalOrigin{};
+};
+std::unordered_map<void*, AtbTransformSnapshot> g_atbTransformSnapshots;
+
+void AtbRestoreSingle(FrameworkElement const& e) {
+    if (!e) return;
+    auto it = g_atbTransformSnapshots.find(winrt::get_abi(e));
+    if (it == g_atbTransformSnapshots.end()) return;
+    auto& snap = it->second;
+    if (winrt::get_abi(e.RenderTransform()) == winrt::get_abi(snap.ours)) {
+        e.RenderTransform(snap.original);
+        e.RenderTransformOrigin(snap.originalOrigin);
+    } else {
+        Wh_Log(L"[ATB] External styler changed a transform; leaving it untouched");
+    }
+    g_atbTransformSnapshots.erase(it);
+}
+void AtbRestoreAll() {
+    for (auto& [key, snap] : g_atbTransformSnapshots) {
+        try {
+            auto e = snap.element.get();
+            if (e && winrt::get_abi(e.RenderTransform()) == winrt::get_abi(snap.ours)) {
+                e.RenderTransform(snap.original);
+                e.RenderTransformOrigin(snap.originalOrigin);
+            }
+        } catch (...) {}
+    }
+    g_atbTransformSnapshots.clear();
+}
+
 struct TaskbarIconInfo {
     winrt::weak_ref<FrameworkElement> element;
     double originalCenterX = 0.0;
@@ -957,13 +997,35 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
         try {
             if (!element) return;
 
-            auto tg = element.RenderTransform().try_as<TransformGroup>();
-            if (!tg || tg.Children().Size() < 4) {
+            void* key = winrt::get_abi(element);
+            auto saved = g_atbTransformSnapshots.find(key);
+            TransformGroup tg{nullptr};
+            if (saved != g_atbTransformSnapshots.end()) {
+                // A theme or another mod might replace our group while running.
+                // Never overwrite that replacement, and never reuse an unknown
+                // four-child TransformGroup that might belong to another mod.
+                if (winrt::get_abi(element.RenderTransform()) !=
+                    winrt::get_abi(saved->second.ours)) {
+                    Wh_Log(L"[ATB] Another mod owns the new transform, skipping button");
+                    return;
+                }
+                tg = saved->second.ours;
+            } else {
+                AtbTransformSnapshot snapshot;
+                snapshot.element = element;
+                snapshot.original = element.RenderTransform();
+                snapshot.originalOrigin = element.RenderTransformOrigin();
                 tg = TransformGroup();
-                tg.Children().Append(ScaleTransform());       // 0 waveScale
-                tg.Children().Append(TranslateTransform());   // 1 waveTranslate
-                tg.Children().Append(ScaleTransform());       // 2 bounceScale
-                tg.Children().Append(TranslateTransform());   // 3 bounceTranslate
+                tg.Children().Append(ScaleTransform());      // 0 ours scale
+                tg.Children().Append(TranslateTransform());  // 1 ours X shift
+                tg.Children().Append(ScaleTransform());      // 2 ours bounce scale
+                tg.Children().Append(TranslateTransform());  // 3 ours bounce Y
+                if (snapshot.original) {
+                    // Apply original Styler transform *after* our transforms.
+                    tg.Children().Append(snapshot.original);
+                }
+                snapshot.ours = tg;
+                g_atbTransformSnapshots.emplace(key, std::move(snapshot));
                 element.RenderTransform(tg);
             }
 
@@ -989,8 +1051,6 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
                 element.RenderTransformOrigin({ 0.5f, yOrigin });
                 info.originalCenterX = point.X + (info.elementWidth / 2.0);
             }
-
-            void* key = winrt::get_abi(element);
 
             auto it = prevStates.find(key);
             if (it != prevStates.end()) {
@@ -1106,10 +1166,10 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
 
                 if (!animate) {
                     void* kT = winrt::get_abi(target);
-                    if (prevElements.contains(kT)) ResetElementTransforms(target);
+                    if (prevElements.contains(kT)) AtbRestoreSingle(target);
 
                     void* kC = winrt::get_abi(child);
-                    if (prevElements.contains(kC)) ResetElementTransforms(child);
+                    if (prevElements.contains(kC)) AtbRestoreSingle(child);
                     continue;
                 }
 
@@ -1135,7 +1195,7 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
 
                     if (!animate) {
                         void* k = winrt::get_abi(target);
-                        if (prevElements.contains(k)) ResetElementTransforms(target);
+                        if (prevElements.contains(k)) AtbRestoreSingle(target);
                     } else {
                         SetupAndAddElement(target);
                     }
@@ -1189,7 +1249,7 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             g_animationIntensity = 0.0;
             if (g_isRenderingHooked.exchange(false))
                 Media::CompositionTarget::Rendering(g_renderingToken);
-            for (auto& pair : g_contexts) ResetAllIconScales(pair.second.icons);
+            AtbRestoreAll();
             g_contexts.clear();
             g_activeContextKey = nullptr;
             return;
@@ -1573,10 +1633,7 @@ void Wh_ModBeforeUninit() {
             hTaskbar,
             [](PVOID) {
                 try {
-                    for (auto& pair : g_contexts) {
-                        auto& ctx = pair.second;
-                        ResetAllIconScales(ctx.icons);
-                    }
+                    AtbRestoreAll();
                     g_contexts.clear();
                     Wh_Log(L"DockAnimation: UI contexts cleaned up.");
                 }
@@ -1585,6 +1642,8 @@ void Wh_ModBeforeUninit() {
             nullptr);
     }
     else {
+        // No live XAML context exists to restore on its owner thread.
+        g_atbTransformSnapshots.clear();
         g_contexts.clear();
     }
     g_taskbarViewDllLoaded = false;
