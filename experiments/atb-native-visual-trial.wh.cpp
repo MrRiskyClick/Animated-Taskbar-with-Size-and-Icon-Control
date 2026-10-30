@@ -1099,7 +1099,13 @@ bool AtbNativeWorkareaStillPreserved() {
     auto& a=g_atbOverhang;
     if(!a.active)return true;
     MONITORINFO mi{sizeof(mi)};
-    return GetMonitorInfoW(
+    RECT live{};
+    // Monitor geometry and HWND are separate invariants. Windows' shell may
+    // silently clamp the HWND while the mouse is idle and no render callback
+    // runs. The UI dispatcher checks both every 100ms.
+    return IsWindow(a.hwnd) && GetWindowRect(a.hwnd,&live) &&
+           AtbEqualRect(live,a.expected) &&
+           GetMonitorInfoW(
             MonitorFromWindow(a.hwnd,MONITOR_DEFAULTTONEAREST),&mi) &&
            AtbEqualRect(mi.rcWork,a.baselineWork);
 }
@@ -1877,7 +1883,7 @@ void InitializeAnimationHooks(void* pThis, FrameworkElement const& taskbarFrame)
                     if (atb_trial::Check()) {
                         if(g_atbOverhang.active &&
                            !AtbNativeWorkareaStillPreserved()) {
-                            Wh_Log(L"[ATB] Workarea changed; immediately rolling back overhang");
+                            Wh_Log(L"[ATB] Workarea or taskbar rectangle changed; immediately rolling back overhang");
                             AtbRestoreNativeOverhang();
                             g_settings.enableNativeOverhang=false;
                         }
