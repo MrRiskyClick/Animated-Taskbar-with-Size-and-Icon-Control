@@ -90,6 +90,20 @@ jobs:
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial/lease.v1')) {
             throw 'Self-test improperly created a real trial lease'
           }
+      - name: Run isolated ATB2 independent geometry lease self-test
+        shell: pwsh
+        run: |
+          $path = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
+          if ($errors.Count) { throw ($errors | Out-String) }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'ATB2 isolated geometry lease test failed' }
+          $fixtures = @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'atb-native-overhang-selftest-*')
+          if ($fixtures.Count -ne 1) { throw "ATB2 fixture count $($fixtures.Count)" }
+          $lease = (Get-Content -LiteralPath (Join-Path $fixtures[0].FullName 'lease.v1') -Raw).Trim()
+          if ($lease -ne 'REVOKED') { throw "ATB2 was not revoked" }
       - name: Validate native source guard contract
         shell: pwsh
         run: python tests/test_native_mod_contract.py
