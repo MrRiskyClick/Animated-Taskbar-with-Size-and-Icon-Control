@@ -11,10 +11,10 @@
 
 The checked-in dist file is generated from the development branch's source and three bundled local headers:
 
-\`\`\`powershell
+```powershell
 py -3 scripts/bundle_windhawk.py --check
 py -3 scripts/bundle_windhawk.py
-\`\`\`
+```
 
 Compare the resulting dist file to the version in GitHub. Do not paste **src/animated-taskbar.wh.cpp**, which requires local headers not present in Windhawk's single-file compiler.
 
@@ -23,7 +23,7 @@ Compare the resulting dist file to the version in GitHub. Do not paste **src/ani
 1. Record Windows version/build and Windhawk version. Keep all existing Windhawk settings and mods unchanged. Do not overwrite any existing mod with the same ID.
 2. In Windhawk, select **Create a New Mod**. Replace the starter template with the **entire** source of [dist/animated-taskbar.wh.cpp](../dist/animated-taskbar.wh.cpp).
 3. Compile using the Windhawk editor's **Compile Mod** command. Report compiler output, including the first error line if compilation fails.
-4. Keep all diagnostic settings blank/zero. Exit editing mode; if enabled, the mod should log geometry and read-only observation messages under ID \`animated-taskbar-size-icon-control\`. There should be **no visual taskbar changes**.
+4. Keep all diagnostic settings blank/zero. Exit editing mode; if enabled, the mod should log geometry and read-only observation messages under ID `animated-taskbar-size-icon-control`. There should be **no visual taskbar changes**.
 5. Disable/remove this test mod when done. Do **not** disable or reset Taskbar Styler, Dock Animation, Start Menu Styler, Notification Center Styler or tray tweaks.
 6. **If the taskbar actually changes**, stop the test, disable this mod and report the full Windhawk log; this is not expected from the diagnostic source.
 
@@ -33,10 +33,10 @@ The 120-second observation timeout does not revert anything because no state is 
 
 On Windows with a C++17 compiler, or in GitHub CI:
 
-\`\`\`bash
+```bash
 g++ -std=c++17 -Wall -Wextra -Werror -pedantic tests/dock_motion_tests.cpp -o dock_motion_tests
 ./dock_motion_tests
-\`\`\`
+```
 
 This checks icon-gap preservation during hover motion even at 250% scale, idle return and pip mapping: 0=none, 1–3=corresponding count, 4+=bar. It does not enumerate real application windows or draw indicators. The original HTML design is the behavioral reference, not production-native code.
 
