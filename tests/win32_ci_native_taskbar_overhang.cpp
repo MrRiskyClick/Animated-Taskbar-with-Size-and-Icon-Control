@@ -154,6 +154,27 @@ int Parent() {
             workPreserved=Equals(current.rcWork,originalWork);
         }
     }
+    if (!hadExpected) {
+        // WM_WINDOWPOSCHANGING can clamp native Shell_TrayWnd layout. Retry
+        // once without that notification; the independent watchdog is armed.
+        std::cout<<"NATIVE_PROBE standard SetWindowPos was clamped; trying SWP_NOSENDCHANGING\n";
+        if(SetWindowPos(hwnd,nullptr,expected.left,expected.top,
+           expected.right-expected.left,expected.bottom-expected.top,
+           SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER|SWP_NOSENDCHANGING)) {
+            for(int i=0;i<40;++i) {
+                Sleep(20);
+                if(GetWindowRect(hwnd,&live)&&Equals(live,expected)){
+                    hadExpected=true;
+                    break;
+                }
+            }
+            MONITORINFO current{sizeof(current)};
+            if(GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),
+                               &current)) {
+                workPreserved=Equals(current.rcWork,originalWork);
+            }
+        }
+    }
     SetEvent(finish.h);
     DWORD joined=WaitForSingleObject(childProcess.h,6500);
     DWORD exitCode=0;
