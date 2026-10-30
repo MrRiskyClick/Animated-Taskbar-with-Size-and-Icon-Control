@@ -1,0 +1,72 @@
+name: Native visual engine — GitHub-only validation
+
+on:
+  push:
+    branches:
+      - feature/full-native-mod-integration-v1
+  pull_request:
+    paths:
+      - 'experiments/**'
+      - 'tests/**'
+      - '.github/workflows/native-visual-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-motion:
+    name: Portable animation math (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and execute original motion tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/dock_motion_tests.cpp -o /tmp/dock-motion-tests
+          /tmp/dock-motion-tests
+      - name: Compile and execute native two-pass spacing tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/native_two_pass_geometry_tests.cpp -o /tmp/native-spacing-tests
+          /tmp/native-spacing-tests
+      - name: Static guard for development-only native mod
+        run: python3 tests/test_native_mod_contract.py
+
+  windows-safety-fixture:
+    name: Windows mock watchdog and motion fixtures
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run collision geometry tests
+        shell: pwsh
+        run: |
+          clang++ -std=c++17 -O2 tests/native_two_pass_geometry_tests.cpp -o "$env:RUNNER_TEMP/native-spacing.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Geometry compilation failed' }
+          & "$env:RUNNER_TEMP/native-spacing.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Geometry test failed' }
+      - name: Parse watchdog PowerShell without executing outside fixture
+        shell: pwsh
+        run: |
+          $t = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path (Get-Location) 'experiments/run-visual-trial-watchdog.ps1'),
+            [ref]$t, [ref]$errors
+          )
+          if ($errors.Count -ne 0) { throw ($errors | Out-String) }
+      - name: Run isolated mock watchdog (never targets Explorer)
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments/run-visual-trial-watchdog.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Self-test failed' }
+          $fixtures = @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'atb-dev-selftest-*' -ErrorAction SilentlyContinue)
+          if ($fixtures.Count -ne 1) { throw "Expected one self-test fixture; found $($fixtures.Count)" }
+          $last = Get-Content -LiteralPath (Join-Path $fixtures[0].FullName 'lease.v1') -Raw
+          if ($last.Trim() -ne 'REVOKED') { throw 'Self-test lease not revoked' }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial/lease.v1')) {
+            throw 'Self-test improperly created a real trial lease'
+          }
+      - name: Validate native source guard contract
+        shell: pwsh
+        run: python tests/test_native_mod_contract.py
