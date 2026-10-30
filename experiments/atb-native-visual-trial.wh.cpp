@@ -1,18 +1,7 @@
 // ==WindhawkMod==
 // @id              atb-animated-taskbar-trial
 // @name              Animated Taskbar Native Hover (Developer Trial)
-// @name:zh-CN        任务栏 Dock 动画
-// @name:ja-JP        タスクバー Dock アニメーション
-// @name:ko-KR        작업 표시줄 Dock 애니메이션
-// @name:pt-BR        Animação Dock da Barra de Tarefas
-// @name:it-IT        Animazione Dock della Barra delle applicazioni
 // @description       Developer-only native icon magnification with collision-free push-out; guarded by an external expiring test lease.
-// @description:uk-UA Анімація іконок панелі завдань, як в macOS, при наведенні
-// @description:zh-CN 类似 macOS 的任务栏图标悬停动画
-// @description:ja-JP macOS のように、マウスホバーでタスクバーアイコンをアニメーション表示します
-// @description:ko-KR macOS처럼 마우스를 올리면 작업 표시줄 아이콘이 애니메이션됩니다
-// @description:pt-BR Anima os ícones da barra de tarefas ao passar o mouse, como no macOS
-// @description:it-IT Anima le icone della barra delle applicazioni al passaggio del mouse, come su macOS
 // @version           0.2.0
 // @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
 // @license           GPL-3.0
@@ -34,30 +23,37 @@
 
 // ==WindhawkModReadme==
 /*
-# Taskbar Dock Animation
+# Animated Taskbar — native developer integration
 
-This mod adds a macOS-like taskbar animation.
-The current version is **Beta-Testing** and not yet fully stable.
+**Experimental code. Not a complete or approved mod.**
+The native button animation and reversible 0/1/2/3/4+ pips are in development.
+This build runs only when a live, matching, external 120-second developer
+lease is supplied; absent or invalid leases fail closed.
 
-**Requires Windows 11 or newer to function.**
+## Currently implemented
+- Native Taskbar.TaskListButton XAML hover animation.
+- Frame-coherent size and spacing (including breathing/bounce width).
+- Native group-window count lookup: no pip when no windows, 1/2/3 dots,
+  4+ represented as a 22px bar, replacing our view of the native indicator.
+- Restore original native indicator and RenderTransform only when we still
+  own the element. No separator is added between pinned/running task buttons.
+- UI-thread timer detaches XAML handlers and reverts at lease expiry.
 
----
+## Not yet implemented / known release blockers
+- Icons enlarged beyond the native taskbar HWND can still be clipped.
+- Native 42px reserved strip with a larger independent paint/input region,
+  precise click-through, independent taskbar height/icon sizing.
+- An authenticated, independently tested watchdog that disables this mod
+  and reliably restores shell geometry even when Explorer is unresponsive.
+- Windows build/monitor/DPI and other Windhawk mod compatibility tests.
 
-### ⚠️ Known Issues & Limitations
-* Icons are sometimes clipped by the taskbar.
-* Upscaled icons may appear slightly blurry.
+The current experimental external PowerShell lease is **not** a trusted
+production recovery system. Do not install or enable this mod until the
+project's Stage 1 Windows watchdog gate passes.
 
-"Taskbar height and icon size" Users: If you are using this mod to create a minimalistic taskbar, please keep the Max Scale at or below 130% to avoid clipping issues. This recommendation applies to other scaling mods as well.
-Dell / Alienware Users: If you encounter specific issues on these devices, please reach out to me directly or open an issue so we can investigate together.
-StartAllBack Compatibility: This mod does not and will not support StartAllBack. Supporting it would require a complete rewrite of the codebase, which is currently out of scope.
-Feedback: Feel free to suggest new animation ideas or curves in the mod topic or via direct message!
-
-You can experiment with the **radius** value to achieve the best result for your setup until proper fixes for the issues above are found.
-
----
-
-## 🖼️ Preview
-![Taskbar Dock Animation Preview](https://raw.githubusercontent.com/Ph0en1x-dev/Hlam/refs/heads/main/Screen-recording-2025-11-06-155028.gif)
+Source: https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
+Credits: Ph0en1x-dev (MIT), digART (GPL-3.0), full notices in
+experiments/THIRD_PARTY_NOTICES.md.
 */
 // ==/WindhawkModReadme==
 
