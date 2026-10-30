@@ -12,8 +12,8 @@
   watchdog restoration, including after forced controller death.
 - ATB2 watcher isolated revocation, stale lease fail-closed behavior,
   region fingerprint conflict protection.
-- Read-only installed-mode prerequisite fixture, exact own-mod-only
-  persistent disable and separate-process post-restart fixture.
+- Read-only installed-mode prerequisite fixture, independently revoked
+  PID-bound trial lease and rejection of stale/dead watcher leases.
 - Competing Ph0en1x-dev Dock Animation registry fixture is rejected
   without modifying that mod.
 
@@ -60,8 +60,9 @@ Read [CONTROLLED_NATIVE_TEST.md](CONTROLLED_NATIVE_TEST.md) before proceeding.
    in a user-controlled PowerShell window. If any prerequisite fails,
    STOP and report the error rather than modifying registry permissions.
 5. Manually enable this one local Windhawk mod during the watchdog lease,
-   then test the real taskbar UI. The watchdog expires after at most
-   120 seconds from its start and disables only this experimental mod.
+   then test the real taskbar UI. The watchdog expires at 120 seconds from
+   its start, revokes the lease and requests native restoration. The
+   Windhawk toggle may remain enabled: **manually switch it OFF after testing**.
 6. If Explorer becomes unresponsive, the user handles Task Manager's
    **Restart Windows Explorer** or reboots manually. The project will
    **never** automate this escalation.
