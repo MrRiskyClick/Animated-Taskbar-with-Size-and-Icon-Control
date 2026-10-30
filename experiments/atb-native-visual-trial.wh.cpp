@@ -40,11 +40,17 @@ lease is supplied; absent or invalid leases fail closed.
 - UI-thread timer detaches XAML handlers and reverts at lease expiry.
 
 ## Not yet implemented / known release blockers
-- Icons enlarged beyond the native taskbar HWND can still be clipped.
-- Experimental opt-in native HWND overhang is under development; reserved area is checked before enabling, but it is not yet user-verified. A separate native paint/input region,
-  precise click-through, independent taskbar height/icon sizing.
-- An authenticated, independently tested watchdog that disables this mod
-  and reliably restores shell geometry even when Explorer is unresponsive.
+- Native overhang is implemented as an OFF-BY-DEFAULT developer trial.
+  Actual XAML painting, native hit testing and user interactions in the
+  extended area have NOT been verified on the user's Windows taskbar.
+- The trial keeps desktop reservation unchanged, expands the XAML root,
+  bottom-anchors native background/buttons, and uses a reversible pixel
+  region for icon footprints; native base height/icon resource sizing
+  controls and cross-mod compatibility are still unverified.
+- The external watchdog can now disable ONLY this local Windhawk 1.7 mod
+  through its own exact registry Disabled value, and restore known native
+  geometry. This is not an authenticated/signed recovery service and
+  cannot guarantee immediate restoration while Explorer is hung.
 - Windows build/monitor/DPI and other Windhawk mod compatibility tests.
 
 The current experimental external PowerShell lease is **not** a trusted
