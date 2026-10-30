@@ -4,12 +4,9 @@
 Explorer restart, process termination and automatic PC reboot. If required,
 **the user alone** will restart Explorer or reboot Windows.
 
-## The only intended permanent side effect of the 120-second developer trial
+## The only intended persistent data from the 120-second developer trial
 
-The external watchdog sets `Disabled=1` for exactly the installed-mode
-Windhawk 1.7 local mod `local@atb-animated-taskbar-trial`. This is
-intentional: after a reboot or Explorer restart, our mod remains disabled
-rather than automatically reapplying an experiment.
+The watcher makes **no Windhawk registry writes**, because installed-mode HKLM keys are protected from unprivileged users. The mod's loader requires a freshly updated lease with its exact Explorer PID, a live watchdog process, and a strict expiration time. After restart/reboot, the old lease is invalid and cannot activate the mod. Windhawk's UI may continue to show the mod as enabled; it is inert until a new supervised lease. The user can disable it manually.
 
 A revoked/expired `ATB2` file in
 `%LOCALAPPDATA%\AnimatedTaskbarTrial\lease.v1` is also retained to block
@@ -32,7 +29,7 @@ or boot-time tasks may be changed.
 | `SetWindowRgn` interactive pixels | Live HWND region | Region belongs to the destroyed window |
 | Extra XAML frame dimensions and children transforms | XAML objects in Explorer | Original XAML objects are destroyed when Explorer exits |
 | Hover animation and custom running pips | In-process Windhawk/XAML objects | New session starts without a valid ATB2 trial |
-| `Disabled=1` for **our local mod** | Persistent Windhawk configuration | Intentionally stays disabled; no trial reapplication |
+| Our mod's Windhawk enabled switch | Persistent Windhawk configuration, **not modified** | May remain enabled; native mod rejects stale/missing PID-bound lease |
 | ATB2 lease and lock files | Per-user local app data | Expired/revoked leases are rejected on load |
 
 These behaviors are supported by normal Windows process/window lifetime
@@ -58,20 +55,19 @@ reviewed.
 ## What the independent watchdog does when Explorer freezes
 
 1. Revoke the ATB2 lease; any responsive mod stops its active changes.
-2. Disable the *one* local Animated Taskbar mod for subsequent process loads.
+2. Revoke the PID-bound trial lease; a fresh Explorer process cannot reapply the mod without a new lease.
 3. Attempt compare-before-restore of its own taskbar window/region.
 4. If Explorer cannot process the restoration, **report the failure** and
    leave Explorer running. There is no automatic restart or termination.
 5. A later manual Explorer restart or reboot recreates the native window.
-   With the local mod disabled and no fresh ATB2, the experiment must not
-   reapply.
+   Without a fresh PID-matched ATB2, the experiment must not reapply even if the Windhawk UI switch remains enabled.
 
 ## Release gate
 
 Before any installation instructions are issued, GitHub Actions must pass:
 - Source restrictions against registry writes in the native DLL,
   appbar/auto-hide modification and Explorer/reboot termination.
-- Own-mod-only `Disabled=1` fixture, including another mod being unchanged.
+- Read-only own-mod and competing-mod registry fixture, rejecting write access requirements and preserving all values.
 - A **new-process** fixture checking that our mod remains disabled,
   representing the persistent state that survives restart.
 - Real disposable-runner native taskbar geometry + external watchdog
