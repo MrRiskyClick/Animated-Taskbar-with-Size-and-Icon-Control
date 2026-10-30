@@ -211,6 +211,7 @@ try{
   # installation must expose one exact writable per-mod Disabled REG_DWORD.
   # Portable/missing/ambiguous states are not supported for native trials.
   [void](Assert-AtbOwnModWritable)
+  Assert-NoAtbCompetingNativeDock
  }
  if($TestUnresolved) {
   if(-not $SelfTest){throw 'TestUnresolved is restricted to isolated CI self-test'}
