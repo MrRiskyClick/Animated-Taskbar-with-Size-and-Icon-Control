@@ -2,13 +2,13 @@
 // @id              atb-animated-taskbar-trial
 // @name              Animated Taskbar Native Hover (Developer Trial)
 // @description       Developer-only native icon magnification with collision-free push-out; guarded by an external expiring test lease.
-// @version           0.2.0
+// @version           0.3.0
 // @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
 // @license           GPL-3.0
 // @github            https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
 // @include           explorer.exe
 // @architecture      x86-64
-// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32
+// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32 -lgdi32
 // ==/WindhawkMod==
 
 // GPL-3.0-or-later developer branch: animation derives from MIT-licensed
@@ -41,7 +41,7 @@ lease is supplied; absent or invalid leases fail closed.
 
 ## Not yet implemented / known release blockers
 - Icons enlarged beyond the native taskbar HWND can still be clipped.
-- Native 42px reserved strip with a larger independent paint/input region,
+- Experimental opt-in native HWND overhang is under development; reserved area is checked before enabling, but it is not yet user-verified. A separate native paint/input region,
   precise click-through, independent taskbar height/icon sizing.
 - An authenticated, independently tested watchdog that disables this mod
   and reliably restores shell geometry even when Explorer is unresponsive.
@@ -241,6 +241,9 @@ experiments/THIRD_PARTY_NOTICES.md.
   $description:pt-BR: Desativa totalmente o bounce ocioso (“respirar”)
   $description:it-IT: Disattiva completamente il bounce inattivo (“respiro”)
 */
+- EnableNativeOverhang: false
+  $name: Native unclipped overhang (experimental, 120-second ATB2 watchdog only)
+  $description: Resize only the transient native taskbar HWND, preserve the original desktop work area, and mask the empty overhang. Off by default. Requires the independent ATB2 geometry watchdog. Do not enable on a primary desktop until the full recovery gate passes.
 // ==/WindhawkModSettings==
 
 
@@ -290,6 +293,7 @@ struct {
     int excludeSystemButtonsMode;
     double lerpSpeed;
     bool disableBounce;
+    bool enableNativeOverhang;
 } g_settings;
 
 
@@ -1708,6 +1712,8 @@ void LoadSettings() {
     if (g_settings.lerpSpeed > 60) g_settings.lerpSpeed = 60;
 
     g_settings.disableBounce = (bool)Wh_GetIntSetting(L"DisableBounce");
+    g_settings.enableNativeOverhang =
+        (bool)Wh_GetIntSetting(L"EnableNativeOverhang");
 
     Wh_Log(L"DockAnimation: Settings loaded.");
 }
