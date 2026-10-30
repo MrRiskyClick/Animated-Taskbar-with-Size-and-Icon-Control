@@ -706,6 +706,9 @@ struct AtbNativeOverhang {
     Transform frameOriginal{nullptr};
     TransformGroup ours{nullptr};
     winrt::Windows::Foundation::Point frameOrigin{};
+    double frameOriginalHeight=0.0;
+    double frameAppliedHeight=0.0;
+    bool heightOwned=false;
     HRGN lastRegion=nullptr; // owned duplicate; never passed to Windows
 } g_atbOverhang;
 
@@ -729,6 +732,8 @@ void AtbRestoreNativeOverhang() {
         if(frame && winrt::get_abi(frame.RenderTransform())==winrt::get_abi(a.ours)) {
             frame.RenderTransform(a.frameOriginal);
             frame.RenderTransformOrigin(a.frameOrigin);
+            if(a.heightOwned && std::abs(frame.Height()-a.frameAppliedHeight)<0.05)
+                frame.Height(a.frameOriginalHeight);
         }
     } catch (...) { Wh_Log(L"[ATB] Could not restore frame transform"); }
     if(IsWindow(a.hwnd)) {
@@ -762,6 +767,7 @@ void AtbRestoreNativeOverhang() {
     a.frame=nullptr;
     a.frameOriginal=nullptr;
     a.ours=nullptr;
+    a.heightOwned=false;
     a.hwnd=nullptr;
     a.active=false;
     Wh_Log(L"[ATB] Native overhang restoration requested");
@@ -863,6 +869,16 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     a.frame=taskbarFrame;
     a.frameOriginal=taskbarFrame.RenderTransform();
     a.frameOrigin=taskbarFrame.RenderTransformOrigin();
+    a.frameOriginalHeight=taskbarFrame.Height();
+    a.frameAppliedHeight=taskbarFrame.ActualHeight();
+    if(!(a.frameAppliedHeight>0.0 && std::isfinite(a.frameAppliedHeight))) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    // The visual host must not stretch taskbar controls and background to
+    // the overhang height. Keep the original compact XAML frame height.
+    taskbarFrame.Height(a.frameAppliedHeight);
+    a.heightOwned=true;
     TransformGroup group;
     if(a.frameOriginal)group.Children().Append(a.frameOriginal);
     TranslateTransform t;
