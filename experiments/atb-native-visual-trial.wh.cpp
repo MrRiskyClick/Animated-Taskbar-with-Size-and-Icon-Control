@@ -21,6 +21,9 @@
 // @compilerOptions -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32
 // ==/WindhawkMod==
 
+// GPL-3.0-or-later developer branch: animation derives from MIT-licensed
+// Ph0en1x-dev, taskbar-group window count integration is adapted from
+// digART's GPL-3.0 Taskbar Count Badges v1.2.0. See THIRD_PARTY_NOTICES.md.
 // Experimental derivative of Ph0en1x-dev's Taskbar Dock Animation v1.9.2.
 // MIT-licensed upstream: https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp
 // See THIRD_PARTY_NOTICES.md in the Animated Taskbar repository.
@@ -253,6 +256,8 @@ You can experiment with the **radius** value to achieve the best result for your
 #include <winrt/Windows.UI.Xaml.Controls.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
+#include <winrt/Windows.UI.Xaml.Shapes.h>
+#include <winrt/Windows.UI.h>
 #include <winrt/Windows.UI.Input.h>
 #include <vector>
 #include <atomic>
@@ -412,6 +417,156 @@ struct IconAnimState {
     double waveTranslateX = 0.0;
 };
 
+
+// Taskbar Count Badges (digART, GPL-3.0) established these Windows 11
+// TaskListGroupViewModel ABI symbols and the Count-1 normalization.
+// This independent rendering implementation intentionally uses only the
+// read-only lookup. When symbols are missing, native pips remain untouched.
+using AtbGetGroupFromButton_t = void*(WINAPI*)(void**, UIElement*);
+using AtbGetGroupCount_t = HRESULT(WINAPI*)(void*, unsigned int*);
+AtbGetGroupFromButton_t g_atbGetGroupFromButton = nullptr;
+AtbGetGroupCount_t g_atbGetGroupCount = nullptr;
+
+struct AtbPipSnapshot {
+    winrt::weak_ref<FrameworkElement> button;
+    winrt::weak_ref<FrameworkElement> nativeIndicator;
+    winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Panel> parent;
+    winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::StackPanel> ours;
+    double indicatorOpacity = 1.0;
+    unsigned lastCount = UINT_MAX;
+};
+std::unordered_map<void*, AtbPipSnapshot> g_atbPips;
+
+FrameworkElement AtbFindNamed(FrameworkElement element, wchar_t const* name, unsigned depth = 0) {
+    if (!element || depth > 20) return nullptr;
+    if (element.Name() == name) return element;
+    int children = Media::VisualTreeHelper::GetChildrenCount(element);
+    for (int i = 0; i < children; ++i) {
+        auto child = Media::VisualTreeHelper::GetChild(element, i).try_as<FrameworkElement>();
+        if (!child) continue;
+        auto found = AtbFindNamed(child, name, depth + 1);
+        if (found) return found;
+    }
+    return nullptr;
+}
+
+bool AtbReadWindowCount(FrameworkElement const& button, unsigned& count) {
+    count = 0;
+    if (!g_atbGetGroupFromButton || !g_atbGetGroupCount) return false;
+    try {
+        auto element = button.as<UIElement>();
+        winrt::com_ptr<IUnknown> group;
+        g_atbGetGroupFromButton(group.put_void(), &element);
+        if (!group) return false;
+        unsigned raw = 0;
+        if (FAILED(g_atbGetGroupCount(group.get(), &raw))) return false;
+        count = raw > 0 ? raw - 1 : 0; // Windows 11 TaskListGroupViewModel
+        return true;
+    } catch (...) { return false; }
+}
+
+void AtbRestorePips() {
+    for (auto& [identity, pip] : g_atbPips) {
+        try {
+            auto indicator = pip.nativeIndicator.get();
+            if (indicator && indicator.Opacity() == 0.0) {
+                indicator.Opacity(pip.indicatorOpacity);
+            }
+            auto parent = pip.parent.get();
+            auto overlay = pip.ours.get();
+            if (parent && overlay) {
+                auto children = parent.Children();
+                unsigned idx = 0;
+                if (children.IndexOf(overlay, idx)) children.RemoveAt(idx);
+            }
+        } catch (...) {}
+    }
+    g_atbPips.clear();
+}
+
+void AtbUpdatePip(AtbPipSnapshot& pip) {
+    auto button = pip.button.get();
+    if (!button) return;
+    unsigned count = 0;
+    if (!AtbReadWindowCount(button, count)) return; // fail unchanged
+    if (count == pip.lastCount) return;
+    pip.lastCount = count;
+    using namespace winrt::Windows::UI::Xaml;
+    using namespace winrt::Windows::UI::Xaml::Controls;
+    using namespace winrt::Windows::UI::Xaml::Shapes;
+
+    auto indicator = pip.nativeIndicator.get();
+    auto overlay = pip.ours.get();
+    if (indicator) indicator.Opacity(count ? 0.0 : pip.indicatorOpacity);
+    if (!overlay) return;
+    overlay.Children().Clear();
+    overlay.Visibility(count ? Visibility::Visible : Visibility::Collapsed);
+    if (!count) return;
+    auto brush = Media::SolidColorBrush(winrt::Windows::UI::Colors::White());
+    auto dots = std::min(count, 3u);
+    if (count <= 3) {
+        for (unsigned i = 0; i < dots; ++i) {
+            Ellipse dot;
+            dot.Width(4.0); dot.Height(4.0);
+            dot.Fill(brush);
+            dot.Margin(Thickness{2.0, 0.0, 2.0, 0.0});
+            overlay.Children().Append(dot);
+        }
+    } else {
+        Rectangle bar;
+        bar.Width(22.0); bar.Height(4.0);
+        bar.RadiusX(2.0); bar.RadiusY(2.0);
+        bar.Fill(brush);
+        overlay.Children().Append(bar);
+    }
+}
+
+void AtbEnsurePip(FrameworkElement const& button) {
+    if (!g_atbGetGroupFromButton || !g_atbGetGroupCount) return;
+    if (winrt::get_class_name(button) != L"Taskbar.TaskListButton") return;
+    void* key = winrt::get_abi(button);
+    auto found = g_atbPips.find(key);
+    if (found != g_atbPips.end()) {
+        AtbUpdatePip(found->second);
+        return;
+    }
+    auto indicator = AtbFindNamed(button, L"RunningIndicator");
+    if (!indicator) return;
+    auto parent = Media::VisualTreeHelper::GetParent(indicator)
+                      .try_as<winrt::Windows::UI::Xaml::Controls::Panel>();
+    if (!parent) return;
+    using namespace winrt::Windows::UI::Xaml;
+    using namespace winrt::Windows::UI::Xaml::Controls;
+    StackPanel overlay;
+    overlay.Name(L"AnimatedTaskbarCountPips");
+    overlay.Orientation(Orientation::Horizontal);
+    overlay.HorizontalAlignment(HorizontalAlignment::Center);
+    overlay.VerticalAlignment(VerticalAlignment::Bottom);
+    overlay.Margin(Thickness{0.0, 0.0, 0.0, 3.0});
+    overlay.IsHitTestVisible(false);
+    overlay.Visibility(Visibility::Collapsed);
+    parent.Children().Append(overlay);
+    AtbPipSnapshot pip;
+    pip.button = button;
+    pip.nativeIndicator = indicator;
+    pip.parent = parent;
+    pip.ours = overlay;
+    pip.indicatorOpacity = indicator.Opacity();
+    g_atbPips.emplace(key, std::move(pip));
+    AtbUpdatePip(g_atbPips.at(key));
+}
+
+void AtbUpdatePips() {
+    for (auto it = g_atbPips.begin(); it != g_atbPips.end();) {
+        if (!it->second.button.get()) {
+            it = g_atbPips.erase(it);
+            continue;
+        }
+        AtbUpdatePip(it->second);
+        ++it;
+    }
+}
+
 // Per-monitor context
 
 /*
@@ -440,7 +595,9 @@ void AtbRestoreSingle(FrameworkElement const& e) {
     }
     g_atbTransformSnapshots.erase(it);
 }
+void AtbRestorePips();
 void AtbRestoreAll() {
+    AtbRestorePips();
     for (auto& [key, snap] : g_atbTransformSnapshots) {
         try {
             auto e = snap.element.get();
@@ -1082,6 +1239,7 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
                 }
             }
 
+            AtbEnsurePip(element);
             newIcons.push_back(info);
         } catch (winrt::hresult_error const& e) {
             Wh_Log(L"DockAnimation: HRESULT error in SetupAndAddElement: %s", e.message().c_str());
@@ -1245,7 +1403,10 @@ void InitializeAnimationHooks(void* pThis, FrameworkElement const& taskbarFrame)
             g_trialDispatcherTimer.Interval(std::chrono::milliseconds(100));
             g_trialTimerToken = g_trialDispatcherTimer.Tick(
                 [](auto const&, auto const&) {
-                    if (atb_trial::Check()) return;
+                    if (atb_trial::Check()) {
+                        AtbUpdatePips();
+                        return;
+                    }
                     g_isMouseInside = false;
                     g_isBouncing = false;
                     g_animationIntensity = 0.0;
@@ -1515,6 +1676,23 @@ HMODULE GetTaskbarViewModuleHandle() {
 bool HookTaskbarViewDllSymbols(HMODULE module) {
     // Taskbar.View.dll
     WindhawkUtils::SYMBOL_HOOK taskbarViewHooks[] = {
+        {
+            {
+                LR"(struct winrt::Taskbar::TaskListGroupViewModel __cdecl TryGetItemFromContainer<struct winrt::Taskbar::TaskListGroupViewModel>(struct winrt::Windows::UI::Xaml::UIElement const &))",
+            },
+            &g_atbGetGroupFromButton,
+            nullptr,
+            true,
+        },
+        {
+            {
+                LR"(public: virtual int __cdecl winrt::impl::produce<struct winrt::Taskbar::implementation::TaskListGroupViewModel,struct winrt::Taskbar::ITaskListGroupViewModel>::get_ViewModelCount(unsigned int *))",
+            },
+            &g_atbGetGroupCount,
+            nullptr,
+            true,
+        },
+
         {
             {
                 LR"(public: virtual int __cdecl winrt::impl::produce<struct winrt::Taskbar::implementation::TaskbarFrame,struct winrt::Windows::UI::Xaml::Controls::IControlOverrides>::OnPointerMoved(void *))"
