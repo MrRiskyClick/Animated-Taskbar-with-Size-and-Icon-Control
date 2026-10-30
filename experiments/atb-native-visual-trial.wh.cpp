@@ -268,6 +268,7 @@ experiments/THIRD_PARTY_NOTICES.md.
 #include <cstdint>
 #include <climits>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 
@@ -315,36 +316,72 @@ unsigned long long UtcMillis() {
     return (v.QuadPart - 116444736000000000ULL) / 10000ULL;
 }
 
+struct WindowGeometryLease {
+    bool valid = false;
+    RECT original{};
+    LONG expectedTop = 0;
+    DWORD watcherPid = 0;
+};
+WindowGeometryLease geometry;
+
 bool ReadLease(unsigned long long* expires) {
     if (leasePath.empty()) return false;
     HANDLE f = CreateFileW(leasePath.c_str(), GENERIC_READ,
                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) return false;
-    char buffer[160]{};
+    char buffer[256]{};
     DWORD read = 0;
-    BOOL ok = ReadFile(f, buffer, sizeof(buffer) - 1, &read, nullptr);
+    BOOL ok = ReadFile(f, buffer, sizeof(buffer)-1, &read, nullptr);
     CloseHandle(f);
     if (!ok || read < 15 || read >= sizeof(buffer)-1) return false;
-    unsigned long explorerPid = 0, watcherPid = 0;
-    unsigned long long deadline = 0, heartbeat = 0;
-    char extra = 0;
-    // Reject extra tokens. A full line of four numbers is the only accepted
-    // lease format; it is not a cryptographic signature.
-    int fields = std::sscanf(buffer, "ATB1 %lu %llu %llu %lu %c",
-                              &explorerPid, &deadline, &heartbeat,
-                              &watcherPid, &extra);
-    if (fields != 4 || explorerPid != GetCurrentProcessId() ||
-        !watcherPid || !deadline || !heartbeat) return false;
-    auto now = UtcMillis();
-    if (heartbeat > now + 1500 || now - std::min(now, heartbeat) > 1800 ||
-        deadline <= now || deadline > now + 120000ULL) return false;
-    HANDLE watcher = OpenProcess(SYNCHRONIZE, FALSE, watcherPid);
-    if (!watcher) return false;
-    DWORD alive = WaitForSingleObject(watcher, 0);
+    unsigned long explorerPid=0, watcherPid=0;
+    unsigned long long deadline=0, heartbeat=0;
+    WindowGeometryLease observed{};
+    char extra=0;
+    int fields=0;
+    if (std::strncmp(buffer,"ATB2 ",5)==0) {
+        LONG x0=0,y0=0,x1=0,y1=0,targetTop=0;
+        fields=std::sscanf(buffer,"ATB2 %lu %llu %llu %lu %ld %ld %ld %ld %ld %c",
+                          &explorerPid,&deadline,&heartbeat,&watcherPid,
+                          &x0,&y0,&x1,&y1,&targetTop,&extra);
+        if (fields!=9) return false;
+        if (x1<=x0 || y1-y0<30 || y1-y0>140 ||
+            x1-x0<400 || targetTop>=y0-24 ||
+            targetTop<y0-160 || targetTop>=y1) return false;
+        observed.valid=true;
+        observed.original={x0,y0,x1,y1};
+        observed.expectedTop=targetTop;
+        observed.watcherPid=watcherPid;
+    } else {
+        fields=std::sscanf(buffer,"ATB1 %lu %llu %llu %lu %c",
+                           &explorerPid,&deadline,&heartbeat,&watcherPid,&extra);
+        if(fields!=4) return false;
+    }
+    if(explorerPid!=GetCurrentProcessId() || !watcherPid ||
+       !deadline || !heartbeat) return false;
+    const auto now=UtcMillis();
+    if (heartbeat>now+1500 || now-std::min(now,heartbeat)>1800 ||
+        deadline<=now || deadline>now+120000ULL) return false;
+    HANDLE watcher=OpenProcess(SYNCHRONIZE,FALSE,watcherPid);
+    if(!watcher) return false;
+    DWORD alive=WaitForSingleObject(watcher,0);
     CloseHandle(watcher);
-    if (alive != WAIT_TIMEOUT) return false;
-    *expires = deadline;
+    if(alive!=WAIT_TIMEOUT) return false;
+
+    // Once a lease is armed, its geometry, process owner and deadline cannot
+    // change via the file, even if a second writer attempts to tamper with it.
+    if(armed.load()) {
+        if(geometry.valid!=observed.valid) return false;
+        if(geometry.valid &&
+           (geometry.watcherPid!=observed.watcherPid ||
+            geometry.expectedTop!=observed.expectedTop ||
+            std::memcmp(&geometry.original,&observed.original,sizeof(RECT))!=0))
+            return false;
+    } else {
+        geometry=observed;
+    }
+    *expires=deadline;
     return true;
 }
 
