@@ -1,26 +1,30 @@
-# Third-party notices: Animated Taskbar developer visual engine
+# GPLv3 + MIT third-party notices
 
-## Native Taskbar Dock Animation base
+## Native grouped-window count lookup and pip integration
 
-- **Original author:** Ph0en1x-dev
-- **Version:** Taskbar Dock Animation 1.9.2
-- **Source:** https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp
-- **GitHub source blob SHA (retrieved October 30, 2026):** `e56788af4cc2878a2d52ed241e9753d07b585597`
-- **License:** MIT, according to the repository's default license for mods without a specific license declaration. The default is discussed in `MatheusSMA/matheussma-theme/NOTICE.md`.
+This branch adapts techniques and symbol signatures from:
 
-The developer visual trial incorporates and modifies the original native
-pointer event, XAML task-button enumeration, frame rendering and cleanup logic.
+- **Taskbar Count Badges** by digART, version 1.2.0
+- Source: https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-count-badges.wh.cpp
+- License: **GPL-3.0-or-later** as stated in its source header
+- Adaptations: read-only `TryGetItemFromContainer<TaskListGroupViewModel>`,
+  `get_ViewModelCount` and its Windows 11 ViewModelCount minus one mapping.
+  The pip renderer itself is new and restores original XAML indicator state.
+- Since this code is GPL-derived, the **combined experimental mod is
+  GPL-3.0-or-later**. See `LICENSE` in this branch.
 
-**Project changes:** frame-coherent collision-free two-pass icon displacement;
-one-shot external expiring developer lease; monotonic local expiration; restore
-of each selected button's original XAML RenderTransform and origin.
+## Native animation base
 
-Other referenced source projects are *not* copied into this file:
-- `m417z` Windows 11 Taskbar Styler (GPLv3)
-- MatheusSMA theme (GPLv3), whose clipping approach is discussed only
-- Synapse-L Taskbar Dock Mode (GPLv3), used only for architectural research.
+- **Taskbar Dock Animation** by Ph0en1x-dev, version 1.9.2
+- Source: https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp
+- License: MIT under the windhawk-mods repository's default licensing terms
+  for mods without explicit license metadata.
+- Original copyright remains with its contributors.
+- Adaptations: same-frame push-out from current scale, independent 120-second
+  observer, backup/restore of user theme RenderTransform, XAML timer and custom
+  running window indicators.
 
-MIT license notice for incorporated upstream code:
+### MIT license for included native animation base
 
 Copyright (c) Ph0en1x-dev and contributors.
 
