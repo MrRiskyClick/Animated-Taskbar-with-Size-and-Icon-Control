@@ -123,6 +123,22 @@ class NativeContract(unittest.TestCase):
         self.assertIn('AtbRestoreNativeOverhang();', MOD)
         self.assertIn('if (!atb_trial::Arm())', MOD)
 
+    def test_no_admin_requirement_or_production_registry_writes(self):
+        module = (ROOT / 'experiments' / 'windhawk-17-own-mod-disarm.ps1').read_text(encoding='utf-8')
+        watcher = (ROOT / 'experiments' / 'run-native-overhang-trial.ps1').read_text(encoding='utf-8')
+        preflight = (ROOT / 'experiments' / 'check-local-trial-prerequisites.ps1').read_text(encoding='utf-8')
+        self.assertIn('Assert-AtbOwnModReadable', watcher)
+        self.assertIn('Assert-AtbOwnModReadable', preflight)
+        self.assertIn('OpenSubKey($keyName,$false)', module)
+        self.assertIn('Write-Lease "REVOKED', watcher)
+        self.assertIn('explorerPid!=GetCurrentProcessId()', MOD)
+        for forbidden in ('SetValue(', 'Disable-OnlyAtbLocalMod',
+                          'Assert-AtbOwnModWritable', 'Start-Process -Verb RunAs',
+                          'RegSetValueEx', 'Set-ItemProperty'):
+            self.assertNotIn(forbidden, module + watcher + preflight)
+        self.assertIn("if($disabled -ne 1)", watcher)
+        self.assertIn('trial mod is enabled', preflight.lower())
+
     def test_watchdog_isolation(self):
         self.assertIn('$SelfTest', WATCHER)
         self.assertIn('atb-dev-selftest-', WATCHER)
