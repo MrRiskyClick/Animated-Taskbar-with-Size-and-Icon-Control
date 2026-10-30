@@ -92,6 +92,11 @@ jobs:
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial/lease.v1')) {
             throw 'Self-test improperly created a real trial lease'
           }
+      - name: Verify watchdog can disable only its own Windhawk mod (CI fixture registry)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File tests/test_windhawk_17_disarm.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Own-mod disable fixture tests failed' }
       - name: Run isolated ATB2 independent geometry lease self-test
         shell: pwsh
         run: |
@@ -166,6 +171,7 @@ jobs:
           path: |
             experiments/atb-native-visual-trial.wh.cpp
             experiments/run-native-overhang-trial.ps1
+            experiments/windhawk-17-own-mod-disarm.ps1
             experiments/THIRD_PARTY_NOTICES.md
             experiments/LICENSE
             docs/NATIVE_DEVELOPER_CANDIDATE.md
