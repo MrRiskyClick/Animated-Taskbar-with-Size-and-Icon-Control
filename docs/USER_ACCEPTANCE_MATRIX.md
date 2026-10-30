@@ -42,3 +42,11 @@ To authorize even a 120-second live trial:
 
 This repository contains **an experimental developer branch, NOT a finished
 production Windhawk mod**. Do not promote a DLL or install a mod automatically.
+
+## Confirmed GitHub-hosted Windows result
+
+`tests/win32_disposable_appbar.cpp` successfully registered its **own**
+42px appbar reservation while the actual window had 96px physical height.
+GitHub Actions reported exactly a 42px desktop work-area delta and passed.
+This validates the smaller appbar/larger owned HWND primitive, not the final
+native Shell_TrayWnd integration. [CI run 41124137009](https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/actions/runs/41124137009).
