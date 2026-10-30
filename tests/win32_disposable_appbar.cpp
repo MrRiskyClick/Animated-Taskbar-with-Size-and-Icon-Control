@@ -39,6 +39,7 @@ int main() {
     const RECT initialWork=info.rcWork;
     const RECT display=info.rcMonitor;
     const int reservePx=42, visualPx=96;
+    {
     OwnAppBar bar;
     bar.hwnd=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,L"STATIC",
         L"ATB GitHub CI temporary appbar proof",WS_POPUP,
@@ -86,5 +87,29 @@ int main() {
     }
     if(SameRect(initialWork,current.rcWork)){return 1;}
     std::cout<<"PASS: independent visual HWND 96px and desktop reservation 42px\n";
+    } // Owned HWND destroyed; ABM_REMOVE called before verifying rollback.
+
+    // Automatic restoration must be observable after disposal of the owned
+    // appbar, not merely assumed from successful registration. This is still
+    // a disposable application-owned HWND, NEVER Shell_TrayWnd.
+    MONITORINFO restored{sizeof(restored)};
+    bool recovered=false;
+    for (int retries=0; retries<75; ++retries) {
+        restored.cbSize=sizeof(restored);
+        if (!GetMonitorInfoW(monitor,&restored)) {
+            std::cerr<<"GetMonitorInfoW failed during restoration verification\n";
+            return 1;
+        }
+        if (SameRect(initialWork,restored.rcWork)) {
+            recovered=true;
+            break;
+        }
+        Sleep(40);
+    }
+    if (!recovered) {
+        std::cerr<<"FAIL: OWNED appbar work area did not restore after ABM_REMOVE\n";
+        return 1;
+    }
+    std::cout<<"PASS: owned appbar removed; desktop work area restored exactly\n";
     return 0;
 }
