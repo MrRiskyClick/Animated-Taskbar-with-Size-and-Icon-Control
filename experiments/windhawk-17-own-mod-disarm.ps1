@@ -70,3 +70,38 @@ function Disable-OnlyAtbLocalMod {
         return $true
     } finally { $key.Dispose() }
 }
+
+# Read-only compatibility gate. Two mods applying independent pointer hooks
+# and XAML transforms to the SAME task buttons cannot be treated as safe.
+# Never change the original dock animation mod's state automatically.
+function Assert-NoAtbCompetingNativeDock {
+    param([switch]$CIOnlyFixture)
+    $baseKey = if($CIOnlyFixture) {
+        'Software\AnimatedTaskbarCI\Tests'
+    } else {
+        'SOFTWARE\Windhawk\Engine\Mods'
+    }
+    $hive = if($CIOnlyFixture) {
+        [Microsoft.Win32.RegistryHive]::CurrentUser
+    } else {
+        [Microsoft.Win32.RegistryHive]::LocalMachine
+    }
+    $root = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+        $hive, [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        foreach($id in @('taskbar-dock-animation','local@taskbar-dock-animation')) {
+            $key=$root.OpenSubKey("$baseKey\$id",$false)
+            if($null -eq $key){continue}
+            try {
+                if($key.GetValueKind('Disabled') -ne
+                    [Microsoft.Win32.RegistryValueKind]::DWord) {
+                    throw "Cannot verify whether competing mod $id is disabled; refusing trial"
+                }
+                $disabled=$key.GetValue('Disabled',$null)
+                if($null -eq $disabled -or $disabled -ne 1) {
+                    throw "Competing native animation mod $id is not verified disabled. This trial will not change it automatically."
+                }
+            } finally { $key.Dispose() }
+        }
+    } finally { $root.Dispose() }
+}
