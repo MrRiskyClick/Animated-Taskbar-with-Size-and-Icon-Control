@@ -1809,10 +1809,16 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             ResetAllIconScales(ctx.icons);
             ctx.isInitialized = false;
             ctx.icons.clear();
-            // Revert to the exact compact native window/region when the user
-            // leaves the taskbar. A later hover may re-enter only while the
-            // original immutable 120-second ATB2 trial remains valid.
-            AtbRestoreNativeOverhang();
+            // The native HWND may remain extended until the lease expires,
+            // but empty overhang must never capture clicks after focus-out.
+            if(g_atbOverhang.active) {
+                auto& overhang=g_atbOverhang;
+                HRGN bottomOnly=CreateRectRgn(
+                    0,overhang.extraPixels,
+                    overhang.expected.right-overhang.expected.left,
+                    overhang.expected.bottom-overhang.expected.top);
+                AtbSetRegion(bottomOnly);
+            }
 
             g_activeContextKey = nullptr;
             g_lastMouseX = -1.0;
