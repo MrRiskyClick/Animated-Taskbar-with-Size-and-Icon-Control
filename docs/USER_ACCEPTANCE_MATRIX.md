@@ -50,3 +50,11 @@ production Windhawk mod**. Do not promote a DLL or install a mod automatically.
 GitHub Actions reported exactly a 42px desktop work-area delta and passed.
 This validates the smaller appbar/larger owned HWND primitive, not the final
 native Shell_TrayWnd integration. [CI run 41124137009](https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/actions/runs/41124137009).
+
+## Additional GitHub-only rollback verification
+
+The disposable Windows appbar experiment now also tests that `ABM_REMOVE`
+and destroying **its own test HWND** return the monitor's work area exactly
+back to its pre-test rectangle (up to 3 seconds to allow recalculation).
+It fails CI if the original work area does not return. This is not the
+missing independent rollback of the actual Explorer taskbar or Windhawk mod.
