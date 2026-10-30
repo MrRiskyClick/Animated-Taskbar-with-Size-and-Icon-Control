@@ -25,21 +25,33 @@ manual UI acceptance are complete.
   **existing native** `Shell_TrayWnd` (no mirrored taskbar), checks
   exact resulting HWND bounds, and confirms **the monitor work area is
   unchanged**. If either invariant fails it immediately attempts restore.
-- Moves the native XAML `TaskbarFrame` to the lower edge of the extended
-  window, without changing the original taskbar reserved strip.
+- Expands the native XAML `TaskbarFrame` root to the extended HWND height
+  to give transformed controls a potential hit-test surface, while
+  bottom-anchoring the original-height `TaskbarBackground`, `ItemsRepeater`
+  and `Gripper`. Captures and restores each original Height/transform.
+  Still requires manual verification of real XAML pointer interactions.
 - A native window region covers the bottom original strip plus only
   the enlarged icon rectangles above it. Empty overhang is outside
   the window region, to avoid stealing pointer events from other apps.
   The region is updated from the *current* animated sizes per frame.
 - On lease expiration, mod unload and settings changes: restore original
   XAML transform (if still owned), pip visuals, window region, and
-  original HWND rectangle with compare-before-restore.
+  original HWND rectangle with compare-before-restore. Monitor geometry
+  is checked while idle as well as during active animation; a foreign
+  region fingerprint aborts cleanup rather than clobbering that mod.
 - An **independent, one-shot 120-second PowerShell watchdog**
   `experiments/run-native-overhang-trial.ps1` writes a bounded
   ATB2 lease, revokes it at expiration, and independently restores the
   native window rectangle if it matches the trial's expected geometry.
-  Its region cleanup only applies when the owner marker matches. This
-  watchdog creates no service, scheduled task or registry setting.
+  The region is restored only when both its ownership marker and
+  FNV-1a fingerprint match the actual Win32 region, protecting concurrent
+  modifications from other taskbar mods. The watcher also REFUSES to rearm
+  an unresolved previous lease. It creates no service or scheduled task.
+  On expiry, it writes exactly one persistent setting:
+  `Disabled=1` for `local@atb-animated-taskbar-trial` under the standard
+  installed Windhawk 1.7 registry key, to prevent future reinjection.
+  The watcher must verify exact own-mod write access BEFORE issuing a lease.
+  Portable/custom-storage Windhawk is unsupported and fails closed.
 
 ## What GitHub Actions has objectively verified
 
@@ -54,7 +66,12 @@ manual UI acceptance are complete.
 - Parent crash injection: the resizing process exits forcibly; its
   **independent watchdog** restores the native window geometry.
 - The PowerShell ATB2 `-SelfTest` mode runs isolated inside TEMP, never
-  accesses Explorer, and finishes with the lease marked `REVOKED`.
+  accesses Explorer, verifies window-region fingerprint conflict detection,
+  and finishes with the lease marked `REVOKED`.
+- A negative test verifies that a prior unresolved lease cannot silently
+  rearm. An additional isolated HKCU registry fixture checks that the
+  Windhawk 1.7 disarm writes only this mod's Disabled value (and refuses
+  malformed state); no actual Windhawk registry entry is touched in CI.
 
 ## What is NOT yet verified
 
@@ -76,6 +93,15 @@ manual UI acceptance are complete.
 - User-controlled taskbar **base height** and physical native icon asset
   sizing are not integrated (the overhang retains the system reservation).
 - Actual visual/behavioral acceptance. **Only the user tests those.**
+
+
+**Windhawk version note:** Windhawk 1.7.3 has no supported CLI for disabling
+a single mod; its original source stores `Disabled` as a REG_DWORD and
+the standard installation uses its `Engine\\Mods` registry configuration.
+A narrowly scoped own-mod disarm is implemented for this exact installed
+mode only, but runtime integration with the user's particular Windhawk
+installation is not validated. Windhawk 2.0 alpha introduces a CLI,
+but this project does not require the user to install alpha software.
 
 ## Release / installation decision
 
