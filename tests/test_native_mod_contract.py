@@ -49,6 +49,15 @@ class NativeContract(unittest.TestCase):
         self.assertNotIn('TerminateProcess(', MOD)
         self.assertIn('The PowerShell process', (ROOT / 'docs' / 'NATIVE_VISUAL_ENGINE_STATUS.md').read_text(encoding='utf-8'))
 
+    def test_pips_have_real_group_count_and_reverse_cleanup(self):
+        self.assertIn('g_atbGetGroupFromButton', MOD)
+        self.assertIn('g_atbGetGroupCount', MOD)
+        self.assertIn('raw > 0 ? raw - 1 : 0', MOD)
+        self.assertIn('AtbRestorePips();', MOD)
+        self.assertIn('if (count <= 3)', MOD)
+        self.assertIn('bar.Width(22.0)', MOD)
+        self.assertIn('overlay.IsHitTestVisible(false)', MOD)
+
     def test_watchdog_isolation(self):
         self.assertIn('$SelfTest', WATCHER)
         self.assertIn('atb-dev-selftest-', WATCHER)
