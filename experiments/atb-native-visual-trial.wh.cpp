@@ -269,6 +269,7 @@ You can experiment with the **radius** value to achieve the best result for your
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdint>
+#include <climits>
 #include <cstdio>
 #include <string>
 #include <winrt/Windows.UI.Xaml.Automation.h>
@@ -489,7 +490,17 @@ void AtbUpdatePip(AtbPipSnapshot& pip) {
     if (!button) return;
     unsigned count = 0;
     if (!AtbReadWindowCount(button, count)) return; // fail unchanged
-    if (count == pip.lastCount) return;
+    if (count == pip.lastCount) {
+        // XAML VisualStateManager and third-party stylers can reapply opacity
+        // without changing the window count. While our overlay owns the
+        // indicator, keep the native duplicate invisible.
+        if (count) {
+            if (auto native = pip.nativeIndicator.get()) {
+                if (native.Opacity() != 0.0) native.Opacity(0.0);
+            }
+        }
+        return;
+    }
     pip.lastCount = count;
     using namespace winrt::Windows::UI::Xaml;
     using namespace winrt::Windows::UI::Xaml::Controls;
