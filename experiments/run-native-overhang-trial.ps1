@@ -35,6 +35,8 @@ public static class AtbGeoWin32 {
  public static extern IntPtr RemoveProp(IntPtr hwnd,string prop);
  [DllImport("user32.dll",SetLastError=true)]
  public static extern int SetWindowRgn(IntPtr hwnd,IntPtr region,bool redraw);
+ [DllImport("user32.dll",SetLastError=true)]
+ public static extern IntPtr SendMessageTimeout(IntPtr hwnd,uint msg,IntPtr wParam,IntPtr lParam,uint flags,uint timeout,out IntPtr result);
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]
  [return:MarshalAs(UnmanagedType.Bool)]
  public static extern bool MoveFileEx(string from,string to,uint flags);
@@ -81,8 +83,11 @@ function Stop-NativeTrial(){
  if($nowPid -ne $explorerPid){Write-Warning 'Explorer PID changed; no geometry write';return}
  $rect=New-Object AtbGeoWin32+RECT
  if(-not [AtbGeoWin32]::GetWindowRect($trialHwnd,[ref]$rect)){return}
- $expected=$before
+ $expected=New-Object AtbGeoWin32+RECT
+ $expected.Left=$before.Left
  $expected.Top=$targetTop
+ $expected.Right=$before.Right
+ $expected.Bottom=$before.Bottom
  if(-not (Same-Rect $rect $expected)){
   if(-not (Same-Rect $rect $before)){Write-Warning 'Another component changed the taskbar rectangle; refusing overwrite'}
   return
@@ -91,8 +96,14 @@ function Stop-NativeTrial(){
  # Never clear an unrelated mod's window region.
  $mark=[AtbGeoWin32]::GetProp($trialHwnd,'ATB_OWNED_OVERHANG_V2')
  if($mark.ToInt64() -eq [int64]$PID){
-  [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_OWNED_OVERHANG_V2')
-  [void][AtbGeoWin32]::SetWindowRgn($trialHwnd,[IntPtr]::Zero,$true)
+  [IntPtr]$probe=[IntPtr]::Zero
+  $responsive=[AtbGeoWin32]::SendMessageTimeout($trialHwnd,0,[IntPtr]::Zero,[IntPtr]::Zero,2,250,[ref]$probe)
+  if($responsive -ne [IntPtr]::Zero){
+   [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_OWNED_OVERHANG_V2')
+   [void][AtbGeoWin32]::SetWindowRgn($trialHwnd,[IntPtr]::Zero,$true)
+  }else{
+   Write-Warning 'Explorer is unresponsive; native region cleanup deferred to mod UI-thread expiry'
+  }
  }
  # SWP_ASYNCWINDOWPOS ensures an unresponsive Explorer doesn't hang watcher.
  # SWP_NOSENDCHANGING avoids Windows clamping the native shell rectangle.
