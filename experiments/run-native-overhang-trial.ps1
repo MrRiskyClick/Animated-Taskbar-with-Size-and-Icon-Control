@@ -1,18 +1,18 @@
 # GitHub-developed experimental independent taskbar-geometry lease/watchdog.
 # PowerShell 5.1+. No installer, startup task, shell restart, auto-hide
-# change or writes to unrelated Windhawk mods. At expiry this watcher writes
-# ONLY its own installed-mode Windhawk 1.7 local-mod Disabled REG_DWORD to 1.
-# That narrowly scoped, persistent state change prevents silent reapplication
-# if Explorer restarts. Requires registry write permission before arming.
+# or registry writes at all. Run as NORMAL USER, never elevated.
+# Reapplication is prevented by a 120-second irrevocable lease bound to
+# the exact current Explorer PID and an independent live watcher process.
+# On expiry, the mod may still show enabled in Windhawk's UI, but remains
+# inert until a fresh user-started and PID-matched lease.
 # Requires explicit user execution for a future controlled trial.
 param([switch]$SelfTest, [switch]$TestUnresolved)
 $ErrorActionPreference='Stop'
-# This trial must NOT arm unless the matching installed Windhawk 1.7 local
-# mod can be individually disabled by this watcher at expiry. No global
-# safe mode, changes to other mods, Explorer restart, or unapproved tasks.
+# This trial never needs a registry write. The mod reads only its expiring
+# lease and remains inert after expiration or manual Explorer restart.
 $disarmModule=Join-Path $PSScriptRoot 'windhawk-17-own-mod-disarm.ps1'
 if(-not (Test-Path -LiteralPath $disarmModule)){
- throw 'Missing exact own-mod disarm module; refusing native geometry trial'
+ throw 'Missing own-mod read-only inspection module; refusing native geometry trial'
 }
 . $disarmModule
 Add-Type @'
@@ -207,10 +207,12 @@ try{
  $lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,
                       [IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
  if(-not $SelfTest){
-  # Fail closed BEFORE the first lease heartbeat. Standard Windhawk 1.7
-  # installation must expose one exact writable per-mod Disabled REG_DWORD.
-  # Portable/missing/ambiguous states are not supported for native trials.
-  [void](Assert-AtbOwnModWritable)
+  # Read-only installed-mode inspection. Never request registry WRITE ACL.
+  # The experimental local mod MUST start disabled before lease is issued.
+  # After expiry its UI switch can remain on, but DLL stays inert without
+  # the original Explorer PID and live, fresh ATB2 watcher lease.
+  $disabled=Assert-AtbOwnModReadable
+  if($disabled -ne 1){throw 'Disable the experimental local mod in Windhawk before arming'}
   Assert-NoAtbCompetingNativeDock
  }
  if($TestUnresolved) {
@@ -276,23 +278,16 @@ try{
    Start-Sleep -Milliseconds 200
   }
  }finally{
-  # Disarm only OUR local mod before any automatic Explorer restart could
-  # reinject it. Revoke the in-process lease even if this registry operation
-  # fails, and always attempt geometry recovery.
-  $disarmError=$null
-  if(-not $SelfTest){
-   try{
-    [void](Disable-OnlyAtbLocalMod)
-    Write-Host '[ATB] Verified our single local Windhawk mod disabled for future loads'
-   }catch{
-    $disarmError=$_
-    Write-Warning "Own-mod disable failed: $($_.Exception.Message)"
-   }
-  }
+  # Do NOT write to Windhawk's protected HKLM registry. Revoking the
+  # lease makes any already-loaded mod disarm and prevents reapplication.
+  # On a new Explorer, the exact Explorer PID in the old lease cannot match.
+  # Windhawk's UI switch can remain enabled; user may turn it off manually.
   try { Write-Lease "REVOKED`n" }
   finally { Stop-NativeTrial }
-  Write-Host '[ATB] Trial completed; no automatic rearming'
-  if($null -ne $disarmError){ throw $disarmError }
+  Write-Host '[ATB] Trial expired and lease revoked; native mod is inert.'
+  if(-not $SelfTest){
+   Write-Host '[ATB] If Windhawk still shows the trial mod Enabled, manually disable it in Windhawk.'
+  }
  }
 }finally{
  if($lock){$lock.Dispose()}
