@@ -54,7 +54,9 @@ as a Windhawk mod) and compiled with the **actual installed Windhawk compiler**:
 
 - Initial native engine: syntax-check exit code 0.
 - XAML transform ownership changes: syntax-check exit code 0.
+- Full compiler + linker: exit code 0, generated 821,248-byte DLL in a separate TEMP working directory; the DLL was NOT loaded into Explorer.
 - The PowerShell watcher: AST parse error count 0.
+- Native two-pass geometry: 100,000 randomized variable-icon-width, up-to-250%-scale and bounce-aware layouts PASS using a static Windows test executable (exit code 0).
 - Isolated `-SelfTest` run on Windows: output confirmed initial lease, 2.5s
   deadline, revocation and exit code 0. Its final fixture file contained
   `REVOKED`; no real `%LOCALAPPDATA%\AnimatedTaskbarTrial\lease.v1`
