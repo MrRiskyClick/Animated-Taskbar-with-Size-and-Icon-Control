@@ -38,6 +38,13 @@ exit 0
    throw "Fresh process did not observe the own-mod-only persistent disable ($LASTEXITCODE)"
  }
  Write-Host 'PASS: fresh process sees only our mod disabled (reboot/restart persistence fixture)'
+ $preflight = Join-Path $PSScriptRoot '..\experiments\check-local-trial-prerequisites.ps1'
+ & pwsh -NoProfile -File $preflight -CIOnlyFixture
+ if ($LASTEXITCODE -ne 0) { throw "Read-only preflight failed in CI fixture" }
+ if((Get-ItemProperty -LiteralPath $ours -Name Disabled).Disabled -ne 1 -or
+    (Get-ItemProperty -LiteralPath $foreign -Name Disabled).Disabled -ne 0){
+  throw "Preflight modified installed-mode fixture registry state"
+ }
  if(-not (Disable-OnlyAtbLocalMod -CIOnlyFixture)){
   throw 'Repeated own-mod disable should be idempotent'
  }
