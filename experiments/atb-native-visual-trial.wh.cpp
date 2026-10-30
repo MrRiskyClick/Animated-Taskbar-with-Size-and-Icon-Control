@@ -240,10 +240,10 @@ experiments/THIRD_PARTY_NOTICES.md.
   $description:ko-KR: 대기 상태 ‘호흡’ 바운스를 완전히 비활성화합니다
   $description:pt-BR: Desativa totalmente o bounce ocioso (“respirar”)
   $description:it-IT: Disattiva completamente il bounce inattivo (“respiro”)
-*/
 - EnableNativeOverhang: false
   $name: Native unclipped overhang (experimental, 120-second ATB2 watchdog only)
   $description: Resize only the transient native taskbar HWND, preserve the original desktop work area, and mask the empty overhang. Off by default. Requires the independent ATB2 geometry watchdog. Do not enable on a primary desktop until the full recovery gate passes.
+*/
 // ==/WindhawkModSettings==
 
 
