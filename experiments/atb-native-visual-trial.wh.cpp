@@ -1824,9 +1824,19 @@ bool RunFromWindowThread(HWND hWnd,
     RUN_FROM_WINDOW_THREAD_PARAM param;
     param.proc = proc;
     param.procParam = procParam;
-    SendMessage(hWnd, runFromWindowThreadRegisteredMsg, 0, (LPARAM)&param);
+    // A hung Explorer taskbar thread must not permanently block Windhawk
+    // unload or the independent recovery process. The hook is uninstalled
+    // before the stack-owned parameter goes out of scope.
+    DWORD_PTR sendResult = 0;
+    LRESULT dispatched = SendMessageTimeoutW(
+        hWnd, runFromWindowThreadRegisteredMsg, 0, (LPARAM)&param,
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1500, &sendResult);
 
     UnhookWindowsHookEx(hook);
+    if (!dispatched) {
+        Wh_Log(L"[ATB] Taskbar thread dispatch timed out; XAML restoration unverified");
+        return false;
+    }
     return true;
 }
 
