@@ -479,6 +479,15 @@ struct DockAnimationContext {
 // One context per monitor (keyed by XAML instance pointer)
 std::map<void*, DockAnimationContext> g_contexts;
 
+// UI-thread heartbeat: unlike pointer/render-only callbacks, this continues
+// to fire while the cursor is idle. It prevents an expired trial from leaving
+// static scaled transforms behind after the rendering loop has stopped.
+// XAML property writes must remain on the owning dispatcher thread.
+winrt::Windows::UI::Xaml::DispatcherTimer g_trialDispatcherTimer{nullptr};
+winrt::event_token g_trialTimerToken{};
+bool g_trialTimerSubscribed = false;
+
+
 // Prototypes
 void LoadSettings();
 void ApplyAnimation(double mouseX, DockAnimationContext& ctx, double intensity, double dtSec);
@@ -1231,6 +1240,27 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
 
 void InitializeAnimationHooks(void* pThis, FrameworkElement const& taskbarFrame) {
     try {
+        if (!g_trialDispatcherTimer) {
+            g_trialDispatcherTimer = winrt::Windows::UI::Xaml::DispatcherTimer();
+            g_trialDispatcherTimer.Interval(std::chrono::milliseconds(100));
+            g_trialTimerToken = g_trialDispatcherTimer.Tick(
+                [](auto const&, auto const&) {
+                    if (atb_trial::Check()) return;
+                    g_isMouseInside = false;
+                    g_isBouncing = false;
+                    g_animationIntensity = 0.0;
+                    if (g_isRenderingHooked.exchange(false)) {
+                        Media::CompositionTarget::Rendering(g_renderingToken);
+                    }
+                    AtbRestoreAll();
+                    g_contexts.clear();
+                    g_activeContextKey = nullptr;
+                    if (g_trialDispatcherTimer) g_trialDispatcherTimer.Stop();
+                    Wh_Log(L"[ATB] UI-thread trial expired/revoked and transforms restored");
+                });
+            g_trialTimerSubscribed = true;
+            g_trialDispatcherTimer.Start();
+        }
         DockAnimationContext ctx;
         ctx.taskbarFrame = taskbarFrame;
         ctx.isInitialized = false;
@@ -1651,6 +1681,16 @@ void Wh_ModBeforeUninit() {
         // No live XAML context exists to restore on its owner thread.
         g_atbTransformSnapshots.clear();
         g_contexts.clear();
+    }
+    // Stop any residual UI heartbeat on unload; never keep a callback that
+    // points into this DLL after Windhawk unloads it.
+    if (g_trialDispatcherTimer) {
+        g_trialDispatcherTimer.Stop();
+        if (g_trialTimerSubscribed) {
+            g_trialDispatcherTimer.Tick(g_trialTimerToken);
+            g_trialTimerSubscribed = false;
+        }
+        g_trialDispatcherTimer = nullptr;
     }
     g_taskbarViewDllLoaded = false;
     g_hooksApplied = false;
