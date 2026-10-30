@@ -92,11 +92,11 @@ jobs:
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial/lease.v1')) {
             throw 'Self-test improperly created a real trial lease'
           }
-      - name: Verify watchdog can disable only its own Windhawk mod (CI fixture registry)
+      - name: Verify unprivileged, read-only Windhawk preflight (CI registry fixture)
         shell: pwsh
         run: |
           pwsh -NoProfile -File tests/test_windhawk_17_disarm.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Own-mod disable fixture tests failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Unprivileged read-only preflight fixtures failed' }
       - name: Run isolated ATB2 independent geometry lease self-test
         shell: pwsh
         run: |
