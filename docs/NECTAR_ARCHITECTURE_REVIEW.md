@@ -106,3 +106,21 @@ This narrows a necessary OS primitive but does **not** prove the native
 Windows taskbar can safely take that geometry, that XAML content will render
 above its frame, or that native hit-testing will follow enlarged buttons.
 The native Explorer modification remains disabled pending the recovery gate.
+
+### Measured GitHub Actions result (disposable Windows owned HWND)
+
+GitHub-hosted Windows runner test on 2026-10-30:
+```
+OWNED HWND physical height: 96px, reserved rectangle: 42px; workarea delta: 42px
+PASS: independent visual HWND 96px and desktop reservation 42px
+```
+Windows job and source: [GitHub Actions run 41124137009](https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/actions/runs/41124137009),
+`tests/win32_disposable_appbar.cpp`.
+
+This is a **confirmed OS primitive** for application-owned independent
+appbars only. It does **not** mean Windhawk can safely extend
+Windows-owned `Shell_TrayWnd` with equivalent behavior, nor that it
+makes native task buttons clickable in the overhang.
+
+No code touched the user's computer; GitHub Actions created and destroyed
+a temporary HWND on its own disposable runner.
