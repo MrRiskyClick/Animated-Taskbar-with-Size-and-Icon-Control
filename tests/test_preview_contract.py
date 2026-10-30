@@ -64,7 +64,6 @@ class PreviewContractTests(unittest.TestCase):
     def test_new_icon_spacing_and_pip_controls_bind_to_css(self):
         self.assertIn("gap:var(--icon-gap)", self.html)
         self.assertIn("bottom:calc(-7px + var(--pip-offset))", self.html)
-        self.assertIn("bottom:calc(-6px + var(--pip-offset))", self.html)
         for key in ("--icon-gap", "--pip-offset", "--icon-offset"):
             self.assertIn("root.style.setProperty('" + key + "'", self.html)
 
@@ -76,10 +75,14 @@ class PreviewContractTests(unittest.TestCase):
             "const totalExtra=extraWidths.reduce",
             "const shift=precedingExtra+extraWidths[i]/2-totalExtra/2",
             "a.el.style.transform=`translate3d(",
-            "const separatorShift=extraWidths.slice(0,boundary).reduce",
-            "separator.style.transform=`translate3d(",
         ):
             self.assertIn(expression, self.html)
+        self.assertNotIn("className='separator'", self.html)
+        self.assertIn("function renderPips(count)", self.html)
+        self.assertIn("if(count<1)return ''", self.html)
+        self.assertIn("if(count>3)return", self.html)
+        self.assertIn("const windowCounts=", self.html)
+        self.assertIn("windowCounts[i]-=1", self.html)
         # Spacing must not be discounted by the Windhawk default 50%
         # factor, which can permit overlap at extreme magnification.
         self.assertNotIn("const spacingFactor=0.5", self.html)
