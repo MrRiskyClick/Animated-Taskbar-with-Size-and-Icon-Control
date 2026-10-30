@@ -882,7 +882,12 @@ bool AtbSetRegion(HRGN next) {
 bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     auto& a=g_atbOverhang;
     if(!g_settings.enableNativeOverhang || a.active ||
-       !atb_trial::geometry.valid || !taskbarFrame) return false;
+       !atb_trial::geometry.valid || !taskbarFrame) {
+        Wh_Log(L"[ATB] Overhang unavailable: setting=%d active=%d leaseGeometry=%d",
+               (int)g_settings.enableNativeOverhang,(int)a.active,
+               (int)atb_trial::geometry.valid);
+        return false;
+    }
     HWND hwnd=FindWindowW(L"Shell_TrayWnd",nullptr);
     DWORD pid=0;
     if(!hwnd || !GetWindowThreadProcessId(hwnd,&pid) ||
@@ -918,7 +923,8 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     }
     if(std::abs(taskbarFrame.ActualWidth()*((double)GetDpiForWindow(hwnd)/96.0) -
                 (before.right-before.left))>4.0) {
-        Wh_Log(L"[ATB] Native XAML frame width does not match primary monitor");
+        Wh_Log(L"[ATB] Overhang refused: XAML frame width %g DIP != HWND %ld px",
+               taskbarFrame.ActualWidth(),before.right-before.left);
         return false;
     }
     RECT wanted=before;
@@ -968,68 +974,68 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
         AtbRestoreNativeOverhang();
         return false;
     }
-    std::vector<FrameworkElement> content;
-    auto shouldShift=[](FrameworkElement const& element) {
-        const auto klass=winrt::get_class_name(element);
-        return klass==L"Taskbar.TaskbarBackground" ||
-               klass==L"Microsoft.UI.Xaml.Controls.ItemsRepeater" ||
-               klass==L"Taskbar.Gripper";
-    };
-    // User's native inspection shows these at depth=2, but some Windows
-    // revisions put them immediately under the root. Restrict to depth 1/2.
-    const int n=Media::VisualTreeHelper::GetChildrenCount(taskbarFrame);
-    for(int i=0;i<n;++i) {
-        auto direct=Media::VisualTreeHelper::GetChild(taskbarFrame,i)
-                        .try_as<FrameworkElement>();
-        if(!direct)continue;
-        if(shouldShift(direct))content.push_back(direct);
-        const int m=Media::VisualTreeHelper::GetChildrenCount(direct);
-        for(int k=0;k<m;++k) {
-            auto child=Media::VisualTreeHelper::GetChild(direct,k)
-                          .try_as<FrameworkElement>();
-            if(child && shouldShift(child))content.push_back(child);
+    // Windows 11 hierarchy: TaskbarFrame -> RootGrid -> taskbar repeater,
+    // tasklist, background, gripper, and system tray. Moving independently
+    // chosen descendants is fragile: ItemsRepeater may be nested >2 levels,
+    // and translating both parent and child can double the vertical shift.
+    // Bottom-anchor the ONE direct RootGrid as a complete original-height
+    // native strip, while its parent TaskbarFrame owns the taller region.
+    FrameworkElement rootGrid{nullptr};
+    const int directChildren=Media::VisualTreeHelper::GetChildrenCount(taskbarFrame);
+    for(int i=0;i<directChildren;++i) {
+        auto child=Media::VisualTreeHelper::GetChild(taskbarFrame,i)
+                       .try_as<FrameworkElement>();
+        if(child && child.Name()==L"RootGrid") {
+            if(rootGrid) {
+                Wh_Log(L"[ATB] Overhang refused: multiple RootGrid children");
+                AtbRestoreNativeOverhang();
+                return false;
+            }
+            rootGrid=child;
         }
     }
-    bool hasButtons=false,hasBackground=false;
-    for(auto const& child:content) {
-        auto type=winrt::get_class_name(child);
-        if(type==L"Microsoft.UI.Xaml.Controls.ItemsRepeater")
-            hasButtons=true;
-        if(type==L"Taskbar.TaskbarBackground")hasBackground=true;
-    }
-    if(!hasButtons || !hasBackground) {
-        Wh_Log(L"[ATB] Unsupported XAML hierarchy; native overhang refused");
+    if(!rootGrid) {
+        Wh_Log(L"[ATB] Overhang refused: no direct RootGrid under TaskbarFrame");
         AtbRestoreNativeOverhang();
         return false;
     }
-    a.frameAppliedHeight=originalDip+extraDip;
-    a.heightOwned=true; // journal inverse BEFORE any XAML property mutation
-    taskbarFrame.Height(a.frameAppliedHeight);
-    for(auto const& child:content) {
-        AtbFrameChildSnapshot original;
-        original.element=child;
-        original.original=child.RenderTransform();
-        original.originalHeight=child.Height();
-        original.appliedHeight=child.ActualHeight();
-        if(!(original.appliedHeight>0.0 &&
-             std::isfinite(original.appliedHeight))) {
-            AtbRestoreNativeOverhang();
-            return false;
-        }
-        TransformGroup group;
-        if(original.original)group.Children().Append(original.original);
-        TranslateTransform moveDown;
-        moveDown.Y(extraDip);
-        group.Children().Append(moveDown);
-        original.ours=group;
-        // Preserve native control dimensions and the tray/background baseline;
-        // the expanded frame itself provides hit-test area for scaled icons.
-        a.shiftedChildren.push_back(std::move(original));
-        // Journal the inverse first. Even a throwing WinRT setter must not
-        // leave an untracked half-applied XAML child property.
-        child.Height(a.shiftedChildren.back().appliedHeight);
-        child.RenderTransform(group);
+    const double rootStripHeight=rootGrid.ActualHeight();
+    if(!(rootStripHeight>0.0 && std::isfinite(rootStripHeight)) ||
+       std::abs(rootStripHeight-originalDip)>5.0 ||
+       std::abs(rootGrid.ActualWidth()-taskbarFrame.ActualWidth())>5.0) {
+        Wh_Log(L"[ATB] Overhang refused: RootGrid dimensions incompatible (root=%g, frame=%g)",
+               rootStripHeight,originalDip);
+        AtbRestoreNativeOverhang();
+        return false;
     }
+    // An explicit pre-existing XAML clip may belong to another taskbar mod.
+    // Do not clear that clip: fail closed instead of damaging its ownership.
+    if(rootGrid.Clip()) {
+        Wh_Log(L"[ATB] Overhang refused: RootGrid has a pre-existing Clip");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    AtbFrameChildSnapshot original;
+    original.element=rootGrid;
+    original.original=rootGrid.RenderTransform();
+    original.originalHeight=rootGrid.Height();
+    original.appliedHeight=rootStripHeight;
+    TransformGroup translated;
+    if(original.original)translated.Children().Append(original.original);
+    TranslateTransform translate;
+    translate.Y(extraDip);
+    translated.Children().Append(translate);
+    original.ours=translated;
+    a.frameAppliedHeight=originalDip+extraDip;
+    a.heightOwned=true; // inverse journal before XAML setters
+    a.shiftedChildren.push_back(std::move(original));
+    taskbarFrame.Height(a.frameAppliedHeight);
+    // Explicit original-size strip avoids native background/tray expanding
+    // with the taller TaskbarFrame. One transform, not nested translations.
+    rootGrid.Height(rootStripHeight);
+    rootGrid.RenderTransform(translated);
+    Wh_Log(L"[ATB] XAML RootGrid bottom-anchored by %g DIP; frame %g -> %g DIP",
+           extraDip,originalDip,a.frameAppliedHeight);
 
     if(!SetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2",
              (HANDLE)(ULONG_PTR)atb_trial::geometry.watcherPid)) {
@@ -1071,31 +1077,46 @@ void AtbUpdateNativeOverhangRegion(DockAnimationContext const& ctx) {
     const int width=now.right-now.left, height=now.bottom-now.top;
     HRGN full=CreateRectRgn(0,a.extraPixels,width,height);
     if(!full)return;
+    // Use the live XAML transform graph, not a synthetic card center or a
+    // constant half-taskbar Y. The old synthetic coordinates ignored the
+    // RootGrid translation, true window positioning and noncentral buttons.
+    auto xamlRoot=frame.XamlRoot();
+    auto visualRoot=xamlRoot ? xamlRoot.Content() : nullptr;
+    if(!visualRoot) {
+        DeleteObject(full);
+        Wh_Log(L"[ATB] Overhang region refused: missing XAML root");
+        AtbRestoreNativeOverhang();
+        return;
+    }
+    const double scale=a.dpiScale;
     for(auto const& icon:ctx.icons) {
         auto element=icon.element.get();
         if(!element)continue;
-        double wave=std::clamp(icon.state.waveScale,1.0,g_settings.maxScale);
-        // Include second bounce transform in hit bounds.
-        auto group=element.RenderTransform().try_as<TransformGroup>();
-        if(group && group.Children().Size()>=3){
-            auto bounce=group.Children().GetAt(2).try_as<ScaleTransform>();
-            if(bounce)wave*=bounce.ScaleX();
-        }
-        const double w=element.ActualWidth()*wave*a.dpiScale;
-        const double h=element.ActualHeight()*wave*a.dpiScale;
-        const double x=(icon.originalCenterX+icon.state.waveTranslateX)*
-                         a.dpiScale;
-        const double cy=a.extraPixels+(a.original.bottom-a.original.top)*0.5;
-        const int x0=(int)std::floor(x-w/2.0-2.0);
-        const int x1=(int)std::ceil(x+w/2.0+2.0);
-        const int y0=(int)std::floor(cy-h/2.0-5.0);
-        const int y1=(int)std::ceil(cy+h/2.0+2.0);
-        if(y0>=a.extraPixels)continue;
-        HRGN shape=CreateRectRgn(std::max(0,x0),std::max(0,y0),
-                 std::min(width,x1),std::min(height,y1));
-        if(shape) {
-            CombineRgn(full,full,shape,RGN_OR);
-            DeleteObject(shape);
+        try {
+            if(!(element.ActualWidth()>0 && element.ActualHeight()>0))continue;
+            auto bounds=element.TransformToVisual(visualRoot).TransformBounds(
+                {0.0f,0.0f,(float)element.ActualWidth(),(float)element.ActualHeight()});
+            if(!std::isfinite(bounds.X)||!std::isfinite(bounds.Y)||
+               !std::isfinite(bounds.Width)||!std::isfinite(bounds.Height))
+                continue;
+            // The XAML root is in view-local DIP; pixel-convert once.
+            const int x0=(int)std::floor((double)bounds.X*scale-3.0);
+            const int x1=(int)std::ceil(((double)bounds.X+bounds.Width)*scale+3.0);
+            const int y0=(int)std::floor((double)bounds.Y*scale-5.0);
+            const int y1=(int)std::ceil(((double)bounds.Y+bounds.Height)*scale+3.0);
+            if(y0>=a.extraPixels || x1<=0 || x0>=width || y1<=0)continue;
+            const int left=std::max(0,x0), top=std::max(0,y0);
+            const int right=std::min(width,x1), bottom=std::min(height,y1);
+            if(left>=right || top>=bottom)continue;
+            HRGN shape=CreateRectRgn(left,top,right,bottom);
+            if(shape) {
+                CombineRgn(full,full,shape,RGN_OR);
+                DeleteObject(shape);
+            }
+        }catch(winrt::hresult_error const& e) {
+            Wh_Log(L"[ATB] Icon transform bounds unavailable: %s",e.message().c_str());
+        }catch(...) {
+            Wh_Log(L"[ATB] Icon transform bounds unavailable");
         }
     }
     if(!AtbSetRegion(full))AtbRestoreNativeOverhang();
