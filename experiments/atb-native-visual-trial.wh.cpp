@@ -2,7 +2,7 @@
 // @id              atb-animated-taskbar-trial
 // @name              Animated Taskbar Native Hover (Developer Trial)
 // @description       Developer-only native icon magnification with collision-free push-out; guarded by an external expiring test lease.
-// @version           0.3.0
+// @version           0.3.1
 // @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
 // @license           GPL-3.0
 // @github            https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
