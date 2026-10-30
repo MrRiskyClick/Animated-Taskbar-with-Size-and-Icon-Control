@@ -106,6 +106,15 @@ jobs:
           if ($fixtures.Count -ne 1) { throw "ATB2 fixture count $($fixtures.Count)" }
           $lease = (Get-Content -LiteralPath (Join-Path $fixtures[0].FullName 'lease.v1') -Raw).Trim()
           if ($lease -ne 'REVOKED') { throw "ATB2 was not revoked" }
+      - name: Refuse rearm after simulated watchdog crash (isolated)
+        shell: pwsh
+        run: |
+          $path = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest -TestUnresolved
+          if ($LASTEXITCODE -eq 0) {
+            throw 'SAFETY REGRESSION: unresolved watchdog journal unexpectedly rearmed'
+          }
+          Write-Host 'PASS: unresolved prior ATB2 lease refuses rearm'
       - name: Validate native source guard contract
         shell: pwsh
         run: python tests/test_native_mod_contract.py
