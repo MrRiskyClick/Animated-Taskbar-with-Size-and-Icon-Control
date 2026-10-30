@@ -43,6 +43,45 @@ public static class AtbGeoWin32 {
  public static extern uint GetRegionData(IntPtr region,uint length,byte[] buffer);
  [DllImport("user32.dll",SetLastError=true)]
  public static extern int GetWindowRgn(IntPtr hwnd,IntPtr region);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)]
+ public static extern IntPtr CreateWindowEx(uint style,string cls,
+   string name,uint windowStyle,int x,int y,int width,int height,
+   IntPtr parent,IntPtr menu,IntPtr instance,IntPtr data);
+ [DllImport("user32.dll",SetLastError=true)]
+ public static extern bool DestroyWindow(IntPtr hwnd);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode,SetLastError=true)]
+ public static extern bool SetProp(IntPtr hwnd,string name,IntPtr value);
+ public static ulong RegionHash(IntPtr region) {
+   uint length=GetRegionData(region,0,null);
+   if(length<32 || length>1048576)return 0;
+   byte[] buffer=new byte[length];
+   if(GetRegionData(region,length,buffer)!=length)return 0;
+   ulong hash=14695981039346656037UL;
+   unchecked {foreach(byte b in buffer){hash^=b;hash*=1099511628211UL;}}
+   return hash==0?1:hash;
+ }
+ public static bool RegionFingerprintSelfTest() {
+   // Completely separate temporary STATIC HWND, no Explorer or taskbar calls.
+   var hwnd=CreateWindowEx(0,"STATIC","ATB owned region test",0x80000000,
+                  10,10,500,100,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
+   if(hwnd==IntPtr.Zero)return false;
+   try {
+     var ours=CreateRectRgn(0,40,500,100);
+     if(ours==IntPtr.Zero)return false;
+     ulong hash=RegionHash(ours);
+     if(hash==0){DeleteObject(ours);return false;}
+     if(SetWindowRgn(hwnd,ours,false)==0){DeleteObject(ours);return false;}
+     if(!SetProp(hwnd,"ATB_REGION_FINGERPRINT_V2",
+                 new IntPtr(unchecked((long)hash))))return false;
+     bool owned=RegionFingerprintMatches(hwnd);
+     var foreign=CreateRectRgn(100,40,500,100);
+     if(foreign==IntPtr.Zero)return false;
+     if(SetWindowRgn(hwnd,foreign,false)==0){DeleteObject(foreign);return false;}
+     bool rejected=!RegionFingerprintMatches(hwnd);
+     RemoveProp(hwnd,"ATB_REGION_FINGERPRINT_V2");
+     return owned && rejected;
+   } finally {DestroyWindow(hwnd);}
+ }
  public static bool RegionFingerprintMatches(IntPtr hwnd) {
   var property = GetProp(hwnd,"ATB_REGION_FINGERPRINT_V2");
   if(property==IntPtr.Zero)return false;
@@ -50,16 +89,8 @@ public static class AtbGeoWin32 {
   if(region==IntPtr.Zero)return false;
   try {
    if(GetWindowRgn(hwnd,region)==0)return false; // ERROR, not owned
-   uint length=GetRegionData(region,0,null);
-   if(length<32 || length>1048576)return false;
-   byte[] buffer=new byte[length];
-   if(GetRegionData(region,length,buffer)!=length)return false;
-   ulong hash=14695981039346656037UL;
-   unchecked {
-    foreach(byte b in buffer) { hash ^= b; hash *= 1099511628211UL; }
-   }
-   if(hash==0)hash=1;
-   return hash==unchecked((ulong)property.ToInt64());
+   ulong hash=RegionHash(region);
+   return hash!=0 && hash==unchecked((ulong)property.ToInt64());
   } finally { DeleteObject(region); }
  }
  [DllImport("user32.dll",SetLastError=true)]
@@ -74,6 +105,9 @@ $root=if($SelfTest){
  Join-Path $env:TEMP ("atb-native-overhang-selftest-"+$PID)
 }else{
  Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial'
+}
+if($SelfTest -and -not [AtbGeoWin32]::RegionFingerprintSelfTest()){
+ throw 'Disposably owned-HWND region fingerprint self-test failed'
 }
 [IO.Directory]::CreateDirectory($root)|Out-Null
 $lease=Join-Path $root 'lease.v1'
