@@ -22,6 +22,7 @@ if(-not $CIOnlyFixture){
 }
 # A successful return from this exact open attempt verifies permission to
 # set only the single local-mod Disabled DWORD. No SetValue is invoked.
+Assert-NoAtbCompetingNativeDock -CIOnlyFixture:$CIOnlyFixture
 $state=Assert-AtbOwnModWritable -CIOnlyFixture:$CIOnlyFixture
 $mode=if($CIOnlyFixture){'CI registry fixture'}else{'installed Windhawk 1.7 local mod'}
 Write-Host "[ATB] PASS: $mode exact Disabled setting found and writable (currently $state)"
