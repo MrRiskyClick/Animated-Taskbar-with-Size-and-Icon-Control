@@ -68,6 +68,8 @@ jobs:
           $env:GITHUB_ACTIONS = $oldCI
           & "$env:RUNNER_TEMP/atb-ci-native-probe.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Native geometry/watchdog probe failed' }
+          & "$env:RUNNER_TEMP/atb-ci-native-probe.exe" --crash-test
+          if ($LASTEXITCODE -ne 0) { throw 'Independent watchdog failed to restore after crash injection' }
       - name: Parse watchdog PowerShell without executing outside fixture
         shell: pwsh
         run: |
