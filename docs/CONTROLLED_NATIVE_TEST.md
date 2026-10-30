@@ -28,9 +28,8 @@ development and CI remain in GitHub. The user runs local commands manually.
 4. Keep Ctrl+Shift+Esc (Task Manager) available as the user's manual method
    to restart Windows Explorer if needed; the system may require a manual
    reboot if Explorer is permanently unresponsive. We will not automate it.
-5. The watcher changes **only** our local Windhawk mod's persistent
-   `Disabled` REG_DWORD from 0 to 1 at expiration, by design. It also
-   leaves a revoked `lease.v1` and a small `watcher.lock` under
+5. The watcher makes **no Windows or Windhawk registry changes**. It
+   revokes a `lease.v1` and leaves a small `watcher.lock` under
    `%LOCALAPPDATA%\AnimatedTaskbarTrial`. It must not change Windows
    taskbar alignment/auto-hide/grouping, system appbar reservation, or other
    mods' persistent settings.
@@ -74,7 +73,7 @@ commit** from the accompanying release note before proceeding.
    ```powershell
    & '.\experiments\check-local-trial-prerequisites.ps1'
    ```
-   If it reports missing key, unsupported mode, or insufficient permission:
+   If it reports missing key, unsupported mode, or denied READ permission:
    **STOP**. Do not edit registry permissions or recreate keys to force it.
    Report the exact failure message; GitHub code will be updated instead.
 
@@ -91,8 +90,9 @@ commit** from the accompanying release note before proceeding.
    Move your pointer over the native application row. Test icon enlargement,
    smooth neighbour displacement, bounce, Start/search/tray behavior,
    grouped previews, right-click Jump Lists and running-window pips.
-3. The watchdog independently disables this one mod at expiration and
-   attempts to restore the native HWND/region. In normal operation the
+3. The watchdog revokes its PID-bound authorization lease at expiration
+   and attempts to restore the native HWND/region. The Windhawk switch may
+   still show enabled; the trial becomes inert. Disable it manually afterward. In normal operation the
    XAML UI timer also restores temporary properties.
 4. Verify that the desktop work area and original taskbar footprint are
    unchanged; other Windhawk mods should still be enabled.
@@ -100,7 +100,7 @@ commit** from the accompanying release note before proceeding.
 If Windows freezes: **do not** ask this project to force a restart.
 The user can restart Windows Explorer manually through Task Manager or
 reboot. After Explorer recreates its HWND, our temporary geometry and XAML
-objects are gone. The revoked lease and `Disabled=1` prevent silent rearm.
+objects are gone. The revoked lease and the changed Explorer PID prevent silent rearm.
 
 ## Observations for the next GitHub iteration
 
