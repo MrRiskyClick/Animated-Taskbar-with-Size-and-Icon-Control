@@ -47,7 +47,7 @@ namespace {
 std::atomic<bool> g_symbolsRegistered{false};
 std::atomic<bool> g_moduleFound{false};
 std::atomic<bool> g_snapshotStarted{false};
-ULONGLONG g_started = 0;
+std::atomic<ULONGLONG> g_started{0};
 using TaskbarFramePointerMoved = int(WINAPI*)(void*, void*);
 TaskbarFramePointerMoved g_pointerMovedOriginal = nullptr;
 
@@ -120,7 +120,7 @@ int WINAPI PointerMovedHook(void* self, void* args) {
     const auto next = [&]() {
         return g_pointerMovedOriginal(self, args);
     };
-    if (GetTickCount64() - g_started >= 120000 || g_snapshotStarted.load()) {
+    if (GetTickCount64() - g_started.load() >= 120000 || g_snapshotStarted.load()) {
         return next();
     }
 
@@ -159,7 +159,8 @@ bool HookNativeModule(HMODULE module) {
         Wh_Log(L"[ATB INVENTORY] TaskbarFrame symbol unavailable; no changes");
         return false;
     }
-    Wh_Log(L"[ATB INVENTORY] native pointer hook registered");
+    g_started.store(GetTickCount64());
+    Wh_Log(L"[ATB INVENTORY] native pointer hook registered; 120-second survey window begins");
     return true;
 }
 
@@ -183,9 +184,8 @@ HMODULE WINAPI LoadLibraryExWHook(LPCWSTR path, HANDLE file, DWORD flags) {
 }
 
 BOOL Wh_ModInit() {
-    g_started = GetTickCount64();
     LogWorkArea();
-    Wh_Log(L"[ATB INVENTORY] read-only native inspection armed for 120 seconds");
+    Wh_Log(L"[ATB INVENTORY] read-only native inspection initializing; 120-second survey begins only after symbol resolution");
     if (HMODULE m = NativeModule()) {
         g_moduleFound = true;
         return HookNativeModule(m);
