@@ -874,6 +874,21 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     if(!GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&mi))
         return false;
     if(before.bottom!=mi.rcMonitor.bottom)return false;
+    // This mod's native HWND overhang is explicitly PRIMARY TASKBAR ONLY.
+    // The XAML pointer hook also fires for secondary monitor taskbars.
+    // Never reposition the primary taskbar due to a secondary monitor hover.
+    POINT cursor{};
+    if(!GetCursorPos(&cursor) || !PtInRect(&before,cursor) ||
+       MonitorFromPoint(cursor,MONITOR_DEFAULTTONULL)!=
+           MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST)) {
+        Wh_Log(L"[ATB] Native overhang refused: pointer is not on primary taskbar");
+        return false;
+    }
+    if(std::abs(taskbarFrame.ActualWidth()*((double)GetDpiForWindow(hwnd)/96.0) -
+                (before.right-before.left))>4.0) {
+        Wh_Log(L"[ATB] Native XAML frame width does not match primary monitor");
+        return false;
+    }
     RECT wanted=before;
     wanted.top=atb_trial::geometry.expectedTop;
     const int extra=before.top-wanted.top;
@@ -956,6 +971,11 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
 void AtbUpdateNativeOverhangRegion(DockAnimationContext const& ctx) {
     auto& a=g_atbOverhang;
     if(!a.active)return;
+    // Secondary-monitor contexts have independent icon coordinates. Their
+    // geometry must NEVER overwrite the primary taskbar's window region.
+    auto frame=ctx.taskbarFrame.get();
+    if(!frame || winrt::get_abi(frame)!=winrt::get_abi(a.frame.get()))
+        return;
     RECT now{};
     if(!GetWindowRect(a.hwnd,&now)||!AtbEqualRect(now,a.expected)) {
         Wh_Log(L"[ATB] Shell changed taskbar geometry; disabling trial overhang");
