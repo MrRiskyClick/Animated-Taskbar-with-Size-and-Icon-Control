@@ -53,7 +53,7 @@ class PreviewContractTests(unittest.TestCase):
             self.assertIn(f'id="{control}"', self.html)
 
     def test_simulated_desktop_and_export_are_explicit(self):
-        for expected in ("simulated", "Windows unchanged", "no Windows changes",
+        for expected in ("simulated", "Windows unchanged", "No system changes",
                          "ATB_DEMO", "localStorage", "application dock"):
             self.assertIn(expected.lower(), self.html.lower())
 
