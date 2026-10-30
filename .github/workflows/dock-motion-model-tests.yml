@@ -1,0 +1,13 @@
+name: Dock motion model tests
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  portable-motion-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and run original motion/pip tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic tests/dock_motion_tests.cpp -o /tmp/atb-motion-tests
+          /tmp/atb-motion-tests
