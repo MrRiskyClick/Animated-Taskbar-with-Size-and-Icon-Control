@@ -23,6 +23,21 @@ try {
  if((Get-ItemProperty -LiteralPath $foreign -Name Disabled).Disabled -ne 0){
   throw 'SECURITY FAILURE: unrelated local mod was touched'
  }
+ # Simulate a fresh PowerShell session after a manual Explorer restart/reboot:
+ # the only persistent state is our mod's own Disabled=1. This uses a
+ # disposable HKCU fixture, not any real Windhawk registry key.
+ $verify = @'
+$own = 'HKCU:\Software\AnimatedTaskbarCI\Tests\local@atb-animated-taskbar-trial'
+$other = 'HKCU:\Software\AnimatedTaskbarCI\Tests\local@unrelated-mod'
+if ((Get-ItemProperty -LiteralPath $own -Name Disabled).Disabled -ne 1) { exit 91 }
+if ((Get-ItemProperty -LiteralPath $other -Name Disabled).Disabled -ne 0) { exit 92 }
+exit 0
+'@
+ & pwsh -NoProfile -Command $verify
+ if ($LASTEXITCODE -ne 0) {
+   throw "Fresh process did not observe the own-mod-only persistent disable ($LASTEXITCODE)"
+ }
+ Write-Host 'PASS: fresh process sees only our mod disabled (reboot/restart persistence fixture)'
  if(-not (Disable-OnlyAtbLocalMod -CIOnlyFixture)){
   throw 'Repeated own-mod disable should be idempotent'
  }
