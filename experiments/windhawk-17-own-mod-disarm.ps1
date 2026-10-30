@@ -1,6 +1,7 @@
-# Windhawk 1.7.x installed-mode OWN-MOD-ONLY safe disarm.
-# Does not enumerate, update, or delete any other Windhawk mod or settings.
-# This file contains functions; dot-sourcing has no side effects.
+# Windhawk 1.7.x installed-mode OWN-MOD READ-ONLY inspection.
+# No registry writes or elevation required. Dot-sourcing has no side effects.
+# The ATB2 lease's exact Explorer PID, live watcher, heartbeat and deadline
+# stop reapplication on a new Explorer after manual restart/reboot.
 #
 # Windhawk 1.7.3 source: src/windhawk/engine/storage_manager.cpp reads
 # RegistryKey from engine.ini and GetModConfig(modName) under its Mods key;
@@ -9,7 +10,7 @@
 # Portable and custom-base installations fail closed.
 $script:AtbModKey = 'SOFTWARE\Windhawk\Engine\Mods\local@atb-animated-taskbar-trial'
 function Open-AtbOwnModKey {
-    param([switch]$Writable, [switch]$CIOnlyFixture)
+    param([switch]$CIOnlyFixture)
     $keyName = if($CIOnlyFixture) {
         'Software\AnimatedTaskbarCI\Tests\local@atb-animated-taskbar-trial'
     } else {
@@ -23,16 +24,16 @@ function Open-AtbOwnModKey {
     $root = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
         $hive, [Microsoft.Win32.RegistryView]::Registry64)
     try {
-        $target = $root.OpenSubKey($keyName,[bool]$Writable)
+        $target = $root.OpenSubKey($keyName,$false)
         if($null -eq $target) {
-            throw "Own Windhawk mod registry key unavailable or not writable: $keyName"
+            throw "Own Windhawk mod registry key unavailable for read-only inspection: $keyName"
         }
         return $target
     } finally { $root.Dispose() }
 }
-function Assert-AtbOwnModWritable {
+function Assert-AtbOwnModReadable {
     param([switch]$CIOnlyFixture)
-    $key = Open-AtbOwnModKey -Writable -CIOnlyFixture:$CIOnlyFixture
+    $key = Open-AtbOwnModKey -CIOnlyFixture:$CIOnlyFixture
     try {
         $kind = $key.GetValueKind('Disabled')
         $value = $key.GetValue('Disabled', $null,
@@ -40,34 +41,9 @@ function Assert-AtbOwnModWritable {
         if($kind -ne [Microsoft.Win32.RegistryValueKind]::DWord -or
            $null -eq $value -or
            ($value -ne 0 -and $value -ne 1)) {
-            throw 'Own local mod Disabled state is not REG_DWORD 0/1: refusing trial'
+            throw 'Own local mod Disabled is not readable REG_DWORD 0/1: refusing trial'
         }
         return [int]$value
-    } finally { $key.Dispose() }
-}
-function Disable-OnlyAtbLocalMod {
-    param([switch]$CIOnlyFixture)
-    $key = Open-AtbOwnModKey -Writable -CIOnlyFixture:$CIOnlyFixture
-    try {
-        if($key.GetValueKind('Disabled') -ne
-           [Microsoft.Win32.RegistryValueKind]::DWord) {
-            throw 'Own mod Disabled registry value unexpectedly changed type'
-        }
-        $disabled = $key.GetValue('Disabled', $null)
-        if($null -eq $disabled -or
-           ($disabled -ne 0 -and $disabled -ne 1)) {
-            throw 'Own mod Disabled value not 0 or 1; refusing registry mutation'
-        }
-        if($disabled -eq 0) {
-            # EXACT original local mod key and EXACT Disabled value only.
-            $key.SetValue('Disabled',1,
-                [Microsoft.Win32.RegistryValueKind]::DWord)
-            $key.Flush()
-        }
-        if($key.GetValue('Disabled', $null) -ne 1) {
-            throw 'Own mod could not be verified disabled'
-        }
-        return $true
     } finally { $key.Dispose() }
 }
 
