@@ -169,13 +169,13 @@ try{
    }
    $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
    if($now -ge $deadlineUtc){break}
-   Write-Lease ("ATB2 {0} {1} {2} {3} {4} {5} {6} {7} {8}\`n" -f
+   Write-Lease ("ATB2 {0} {1} {2} {3} {4} {5} {6} {7} {8}`n" -f
      $explorerPid,$deadlineUtc,$now,$PID,
      $before.Left,$before.Top,$before.Right,$before.Bottom,$targetTop)
    Start-Sleep -Milliseconds 200
   }
  }finally{
-  Write-Lease "REVOKED\`n"
+  Write-Lease "REVOKED`n"
   Stop-NativeTrial
   Write-Host '[ATB] Trial completed; no automatic rearming'
  }
