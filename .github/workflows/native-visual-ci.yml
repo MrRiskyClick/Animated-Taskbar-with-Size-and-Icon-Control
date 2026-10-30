@@ -70,3 +70,42 @@ jobs:
       - name: Validate native source guard contract
         shell: pwsh
         run: python tests/test_native_mod_contract.py
+
+  windhawk-compiler:
+    name: Windhawk 1.7.3 official Clang DLL compilation
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache verified official Windhawk compiler
+        uses: actions/cache@v4
+        id: windhawk-cache
+        with:
+          path: ${{ runner.temp }}/windhawk
+          key: windhawk-portable-1.7.3-compiler-v1
+      - name: Download pinned Windhawk installer and extract portable tools
+        if: steps.windhawk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="${{ runner.temp }}/windhawk_setup.exe"
+          curl --fail --location --retry 3 'https://github.com/ramensoftware/windhawk/releases/download/v1.7.3/windhawk_setup.exe' -o "$installer"
+          printf '%s  %s\n' '5116cc1703384aac88b8d7a3b57f172aea5da32b6df7355fb2f8247d23813c8f' "$installer" | sha256sum -c -
+          MSYS_NO_PATHCONV=1 "$installer" /S /PORTABLE "/D=${{ runner.temp }}\\windhawk"
+      - name: Compile and link the native mod without loading it
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'windhawk'
+          $compiler = Join-Path $base 'Compiler/bin/clang++.exe'
+          $flags = Join-Path $base 'Compiler/compile_flags.txt'
+          $headers = Join-Path $base 'Compiler/include'
+          if (-not (Test-Path $compiler)) { throw "Windhawk compiler extraction incomplete: $compiler" }
+          if (-not (Test-Path $flags)) { throw "Windhawk flags missing" }
+          $source = Join-Path (Get-Location) 'experiments/atb-native-visual-trial.wh.cpp'
+          $output = Join-Path $env:RUNNER_TEMP 'atb-native-trial.dll'
+          & $compiler "@$flags" "-I$headers" -shared -o $output $source -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32
+          if ($LASTEXITCODE -ne 0) { throw "Native Windhawk build failed" }
+          if (-not (Test-Path $output)) { throw "Compiled DLL missing" }
+          $hash = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
+          Write-Host "WINDSHA256=$hash"
+          Write-Host "DLL compiled for isolated GitHub CI only; never installed or run."
