@@ -90,3 +90,19 @@ Shell_TrayWnd integration ever be attempted.
   proved native watchdog, and only in manually user-approved trial builds.
 
 **No external code was copied from Nectar into the mod.**
+
+## GitHub-only follow-through
+
+Implemented a **disposable owned-HWND appbar proof** at
+`tests/win32_disposable_appbar.cpp`, executed only on GitHub-hosted Windows
+runners. It registers an owned, temporary HWND as a 42px bottom appbar
+reservation but positions its actual window to 96px; it prints whether the
+work area reflects the 42px strip, then unregisters its own appbar and
+destroys the HWND on exit. Where GitHub's session lacks an interactive shell
+or appbar service, it clearly prints `SKIP` or `INCONCLUSIVE`; it must
+never report that it verified real `Shell_TrayWnd` without having done so.
+
+This narrows a necessary OS primitive but does **not** prove the native
+Windows taskbar can safely take that geometry, that XAML content will render
+above its frame, or that native hit-testing will follow enlarged buttons.
+The native Explorer modification remains disabled pending the recovery gate.
