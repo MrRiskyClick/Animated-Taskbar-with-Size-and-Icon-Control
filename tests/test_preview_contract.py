@@ -46,7 +46,8 @@ class PreviewContractTests(unittest.TestCase):
             self.assertNotIn(forbidden, self.html)
 
     def test_full_set_of_controls_and_feedback_exposed(self):
-        for control in ("iconsize", "height", "lift", "iconoffset", "icongap",\n                        "pipoffset", "twotier", "dockbg",
+        for control in ("iconsize", "height", "lift", "iconoffset", "icongap",
+                        "pipoffset", "twotier", "dockbg",
                         "maxscale", "radius", "spring", "rise", "magnify",
                         "neighbors", "glow", "opacity", "blur", "corners",
                         "compact", "export", "reset"):
