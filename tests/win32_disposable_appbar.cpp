@@ -72,6 +72,41 @@ int main() {
     RECT actual{};
     if(!GetWindowRect(bar.hwnd,&actual)){return 1;}
     if(actual.bottom-actual.top!=visualPx){return 1;}
+    // Restrict the window's actual interactive/paint region to the native
+    // 42px strip plus two sample enlarged icons above it. This demonstrates
+    // that empty overhang can stay outside the HWND's input region.
+    const int width=actual.right-actual.left;
+    const int stripTop=visualPx-reservePx;
+    HRGN region=CreateRectRgn(0,stripTop,width,visualPx);
+    if(!region){std::cerr<<"CreateRectRgn failed\n";return 1;}
+    HRGN iconLeft=CreateRectRgn(90,8,140,stripTop);
+    HRGN iconRight=CreateRectRgn(220,8,270,stripTop);
+    if(!iconLeft || !iconRight ||
+       CombineRgn(region,region,iconLeft,RGN_OR)==ERROR ||
+       CombineRgn(region,region,iconRight,RGN_OR)==ERROR) {
+        if(iconLeft) DeleteObject(iconLeft);
+        if(iconRight) DeleteObject(iconRight);
+        DeleteObject(region);
+        return 1;
+    }
+    DeleteObject(iconLeft);
+    DeleteObject(iconRight);
+    // SetWindowRgn takes ownership on success.
+    if(!SetWindowRgn(bar.hwnd,region,TRUE)){DeleteObject(region);return 1;}
+    HRGN actualRegion=CreateRectRgn(0,0,0,0);
+    if(!actualRegion){return 1;}
+    int kind=GetWindowRgn(bar.hwnd,actualRegion);
+    if(kind==ERROR){DeleteObject(actualRegion);return 1;}
+    bool hitIcons=PtInRegion(actualRegion,100,20)&&PtInRegion(actualRegion,230,20);
+    bool passthrough= !PtInRegion(actualRegion,150,20)&&
+                      !PtInRegion(actualRegion,width-20,20);
+    bool hitNativeStrip=PtInRegion(actualRegion,150,visualPx-5);
+    DeleteObject(actualRegion);
+    if(!hitIcons||!passthrough||!hitNativeStrip) {
+        std::cerr<<"FAIL: overhang region captures empty pixels or misses icon\n";
+        return 1;
+    }
+    std::cout<<"PASS: visual overhang owns only icon regions, reserved strip remains clickable\n";
     MONITORINFO current{sizeof(current)};
     if(!GetMonitorInfoW(monitor,&current)){return 1;}
     const int workDelta=initialWork.bottom-current.rcWork.bottom;
