@@ -97,6 +97,32 @@ class NativeContract(unittest.TestCase):
         self.assertIn('GetRegionData(region,length,buffer)', watcher)
         self.assertNotIn('Stop-Process -Name explorer', watcher)
 
+    def test_manual_restart_only_and_no_persistent_shell_settings(self):
+        # Hard requirement: a hung Explorer is left for the user to restart.
+        # The native mod only changes transient HWND/XAML state, never global
+        # taskbar preferences, registry or power/restart state.
+        for forbidden in (
+            'RegSetValueEx(', 'RegCreateKeyEx(', 'RegDeleteTree(',
+            'SHAppBarMessage(', 'SystemParametersInfoW(',
+            'TerminateProcess(', 'ExitWindowsEx(', 'InitiateSystemShutdown',
+        ):
+            self.assertNotIn(forbidden, MOD, forbidden)
+
+        watcher = (ROOT / 'experiments' / 'run-native-overhang-trial.ps1').read_text(encoding='utf-8')
+        disarm = (ROOT / 'experiments' / 'windhawk-17-own-mod-disarm.ps1').read_text(encoding='utf-8')
+        for forbidden in (
+            'Stop-Process -Name explorer', 'Restart-Computer',
+            'taskkill.exe', 'shutdown.exe', 'Restart-Service',
+            'Set-ScheduledTask', 'Register-ScheduledTask',
+        ):
+            self.assertNotIn(forbidden.lower(), (watcher + disarm).lower(), forbidden)
+        self.assertIn("Disabled',1", disarm)
+        self.assertIn("local@atb-animated-taskbar-trial", disarm)
+        self.assertIn("Disable-OnlyAtbLocalMod", watcher)
+        self.assertIn('Write-Lease "REVOKED', watcher)
+        self.assertIn('AtbRestoreNativeOverhang();', MOD)
+        self.assertIn('if (!atb_trial::Arm())', MOD)
+
     def test_watchdog_isolation(self):
         self.assertIn('$SelfTest', WATCHER)
         self.assertIn('atb-dev-selftest-', WATCHER)
