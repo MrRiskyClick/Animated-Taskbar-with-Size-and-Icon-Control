@@ -694,6 +694,13 @@ std::map<void*, DockAnimationContext> g_contexts;
  * appbar registration, Explorer restart or other-mod setting changes.
  * Do NOT enable for a live machine until independent recovery tests pass.
  */
+struct AtbFrameChildSnapshot {
+    winrt::weak_ref<FrameworkElement> element;
+    Transform original{nullptr};
+    TransformGroup ours{nullptr};
+    double originalHeight=0;
+    double appliedHeight=0;
+};
 struct AtbNativeOverhang {
     HWND hwnd=nullptr;
     RECT original{};
@@ -709,6 +716,7 @@ struct AtbNativeOverhang {
     double frameOriginalHeight=0.0;
     double frameAppliedHeight=0.0;
     bool heightOwned=false;
+    std::vector<AtbFrameChildSnapshot> shiftedChildren;
     HRGN lastRegion=nullptr; // owned duplicate; never passed to Windows
 } g_atbOverhang;
 
@@ -759,15 +767,25 @@ bool AtbIsOurRegion() {
 void AtbRestoreNativeOverhang() {
     auto& a=g_atbOverhang;
     if(!a.active) return;
+    // Restore inside-out, and only if our own transform/height still owns
+    // that control. Never clobber intervening Taskbar Styler edits.
+    for(auto it=a.shiftedChildren.rbegin();it!=a.shiftedChildren.rend();++it) {
+        try {
+            auto child=it->element.get();
+            if(!child || winrt::get_abi(child.RenderTransform())!=
+                         winrt::get_abi(it->ours)) continue;
+            child.RenderTransform(it->original);
+            if(std::abs(child.Height()-it->appliedHeight)<0.05)
+                child.Height(it->originalHeight);
+        } catch (...) { Wh_Log(L"[ATB] Child layout restoration skipped"); }
+    }
+    a.shiftedChildren.clear();
     try {
         auto frame=a.frame.get();
-        if(frame && winrt::get_abi(frame.RenderTransform())==winrt::get_abi(a.ours)) {
-            frame.RenderTransform(a.frameOriginal);
-            frame.RenderTransformOrigin(a.frameOrigin);
-            if(a.heightOwned && std::abs(frame.Height()-a.frameAppliedHeight)<0.05)
-                frame.Height(a.frameOriginalHeight);
-        }
-    } catch (...) { Wh_Log(L"[ATB] Could not restore frame transform"); }
+        if(frame && a.heightOwned &&
+           std::abs(frame.Height()-a.frameAppliedHeight)<0.05)
+            frame.Height(a.frameOriginalHeight);
+    } catch (...) { Wh_Log(L"[ATB] Could not restore root frame height"); }
     if(IsWindow(a.hwnd)) {
         DWORD pid=0;
         GetWindowThreadProcessId(a.hwnd,&pid);
@@ -803,6 +821,7 @@ void AtbRestoreNativeOverhang() {
     a.frameOriginal=nullptr;
     a.ours=nullptr;
     a.heightOwned=false;
+    a.shiftedChildren.clear();
     a.hwnd=nullptr;
     a.active=false;
     Wh_Log(L"[ATB] Native overhang restoration requested");
@@ -921,29 +940,81 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     }
     a.active=true;
     try {
-    // Native taskbar controls were previously arranged for the compact strip.
-    // Shift the existing XAML TaskbarFrame (background/buttons/tray) to the
-    // bottom of the enlarged HWND, preserving its original transform.
+    // Give the root TaskbarFrame the entire visual/input height. Keeping
+    // the ROOT at the old 42px height would prevent hit testing on animated
+    // icons that extend above it even when the Win32 region is correct.
+    // Instead shift only the original-height taskbar content controls down.
     a.frame=taskbarFrame;
     a.frameOriginal=taskbarFrame.RenderTransform();
     a.frameOrigin=taskbarFrame.RenderTransformOrigin();
     a.frameOriginalHeight=taskbarFrame.Height();
-    a.frameAppliedHeight=taskbarFrame.ActualHeight();
-    if(!(a.frameAppliedHeight>0.0 && std::isfinite(a.frameAppliedHeight))) {
+    const double originalDip=taskbarFrame.ActualHeight();
+    const double extraDip=(double)extra/a.dpiScale;
+    if(!(originalDip>0.0 && std::isfinite(originalDip)) ||
+       !(extraDip>0.0 && std::isfinite(extraDip))) {
         AtbRestoreNativeOverhang();
         return false;
     }
-    // The visual host must not stretch taskbar controls and background to
-    // the overhang height. Keep the original compact XAML frame height.
+    std::vector<FrameworkElement> content;
+    auto shouldShift=[](FrameworkElement const& element) {
+        const auto klass=winrt::get_class_name(element);
+        return klass==L"Taskbar.TaskbarBackground" ||
+               klass==L"Microsoft.UI.Xaml.Controls.ItemsRepeater" ||
+               klass==L"Taskbar.Gripper";
+    };
+    // User's native inspection shows these at depth=2, but some Windows
+    // revisions put them immediately under the root. Restrict to depth 1/2.
+    const int n=Media::VisualTreeHelper::GetChildrenCount(taskbarFrame);
+    for(int i=0;i<n;++i) {
+        auto direct=Media::VisualTreeHelper::GetChild(taskbarFrame,i)
+                        .try_as<FrameworkElement>();
+        if(!direct)continue;
+        if(shouldShift(direct))content.push_back(direct);
+        const int m=Media::VisualTreeHelper::GetChildrenCount(direct);
+        for(int k=0;k<m;++k) {
+            auto child=Media::VisualTreeHelper::GetChild(direct,k)
+                          .try_as<FrameworkElement>();
+            if(child && shouldShift(child))content.push_back(child);
+        }
+    }
+    bool hasButtons=false,hasBackground=false;
+    for(auto const& child:content) {
+        auto type=winrt::get_class_name(child);
+        if(type==L"Microsoft.UI.Xaml.Controls.ItemsRepeater")
+            hasButtons=true;
+        if(type==L"Taskbar.TaskbarBackground")hasBackground=true;
+    }
+    if(!hasButtons || !hasBackground) {
+        Wh_Log(L"[ATB] Unsupported XAML hierarchy; native overhang refused");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    a.frameAppliedHeight=originalDip+extraDip;
     taskbarFrame.Height(a.frameAppliedHeight);
     a.heightOwned=true;
-    TransformGroup group;
-    if(a.frameOriginal)group.Children().Append(a.frameOriginal);
-    TranslateTransform t;
-    t.Y((double)extra/a.dpiScale);
-    group.Children().Append(t);
-    a.ours=group;
-    taskbarFrame.RenderTransform(group);
+    for(auto const& child:content) {
+        AtbFrameChildSnapshot original;
+        original.element=child;
+        original.original=child.RenderTransform();
+        original.originalHeight=child.Height();
+        original.appliedHeight=child.ActualHeight();
+        if(!(original.appliedHeight>0.0 &&
+             std::isfinite(original.appliedHeight))) {
+            AtbRestoreNativeOverhang();
+            return false;
+        }
+        TransformGroup group;
+        if(original.original)group.Children().Append(original.original);
+        TranslateTransform moveDown;
+        moveDown.Y(extraDip);
+        group.Children().Append(moveDown);
+        original.ours=group;
+        // Preserve native control dimensions and the tray/background baseline;
+        // the expanded frame itself provides hit-test area for scaled icons.
+        child.Height(original.appliedHeight);
+        a.shiftedChildren.push_back(std::move(original));
+        child.RenderTransform(group);
+    }
 
     if(!SetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2",
              (HANDLE)(ULONG_PTR)atb_trial::geometry.watcherPid)) {
