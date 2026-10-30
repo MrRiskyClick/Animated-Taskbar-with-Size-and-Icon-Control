@@ -1834,46 +1834,11 @@ bool RunFromWindowThread(HWND hWnd,
     return true;
 }
 
-void Wh_ModBeforeUninit() {
-    Wh_Log(L"DockAnimation: Wh_ModBeforeUninit (safe cleanup)");
-
-    g_activeContextKey = nullptr;
-    g_isBouncing = false;
-    g_isMouseInside = false;
-    g_animationIntensity = 0.0;
-
-    try {
-        if (g_isRenderingHooked.exchange(false)) {
-            Media::CompositionTarget::Rendering(g_renderingToken);
-            Wh_Log(L"DockAnimation: Unhooked CompositionTarget::Rendering.");
-        }
+void AtbStopUiCallbacks() {
+    // Called only on owning Windows taskbar XAML thread.
+    if (g_isRenderingHooked.exchange(false)) {
+        Media::CompositionTarget::Rendering(g_renderingToken);
     }
-    catch (winrt::hresult_error const& e) {
-        Wh_Log(L"DockAnimation: HRESULT error unhooking rendering: %s",
-               e.message().c_str());
-    }
-
-    HWND hTaskbar = FindWindow(L"Shell_TrayWnd", NULL);
-    if (hTaskbar) {
-        RunFromWindowThread(
-            hTaskbar,
-            [](PVOID) {
-                try {
-                    AtbRestoreAll();
-                    g_contexts.clear();
-                    Wh_Log(L"DockAnimation: UI contexts cleaned up.");
-                }
-                catch (...) {}
-            },
-            nullptr);
-    }
-    else {
-        // No live XAML context exists to restore on its owner thread.
-        g_atbTransformSnapshots.clear();
-        g_contexts.clear();
-    }
-    // Stop any residual UI heartbeat on unload; never keep a callback that
-    // points into this DLL after Windhawk unloads it.
     if (g_trialDispatcherTimer) {
         g_trialDispatcherTimer.Stop();
         if (g_trialTimerSubscribed) {
@@ -1881,6 +1846,44 @@ void Wh_ModBeforeUninit() {
             g_trialTimerSubscribed = false;
         }
         g_trialDispatcherTimer = nullptr;
+    }
+}
+
+void Wh_ModBeforeUninit() {
+    Wh_Log(L"[ATB] Wh_ModBeforeUninit: clean up on the taskbar UI thread");
+    atb_trial::armed = false; // stop native callbacks from mutating UI
+    g_activeContextKey = nullptr;
+    g_isBouncing = false;
+    g_isMouseInside = false;
+    g_animationIntensity = 0.0;
+
+    HWND hTaskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
+    if (hTaskbar) {
+        bool cleaned = RunFromWindowThread(
+            hTaskbar,
+            [](PVOID) {
+                try {
+                    AtbStopUiCallbacks();
+                    AtbRestoreAll();
+                    g_contexts.clear();
+                    Wh_Log(L"[ATB] Native transforms, pips and UI handlers restored");
+                } catch (winrt::hresult_error const& e) {
+                    Wh_Log(L"[ATB] XAML cleanup HRESULT: %s", e.message().c_str());
+                } catch (...) {
+                    Wh_Log(L"[ATB] Exception while restoring native XAML state");
+                }
+            },
+            nullptr);
+        if (!cleaned) {
+            Wh_Log(L"[ATB] WARNING: taskbar thread not reachable during unload; UI callbacks may persist");
+        }
+    } else {
+        // Only discard references; never invoke XAML COM methods on the wrong
+        // thread when Explorer has already destroyed the taskbar window.
+        g_atbTransformSnapshots.clear();
+        g_atbPips.clear();
+        g_contexts.clear();
+        Wh_Log(L"[ATB] Taskbar window missing; dropped dead XAML references");
     }
     g_taskbarViewDllLoaded = false;
     g_hooksApplied = false;
@@ -1896,13 +1899,14 @@ void Wh_ModSettingsChanged() {
             hTaskbar,
             [](PVOID) {
                 try {
-                    for (auto& pair : g_contexts) {
-                        auto& ctx = pair.second;
-                        ResetAllIconScales(ctx.icons);
-                        ctx.isInitialized = false;
-                        ctx.icons.clear();
-                    }
+                    // Settings updates should not leave stale ownership or
+                    // custom pip layers on recycled taskbar buttons.
+                    AtbRestoreAll();
+                    g_contexts.clear();
+                    g_activeContextKey = nullptr;
                     g_isBouncing = false;
+                    g_isMouseInside = false;
+                    g_animationIntensity = 0.0;
                 } catch (...) {}
             },
             nullptr);
