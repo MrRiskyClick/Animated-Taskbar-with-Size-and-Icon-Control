@@ -130,9 +130,18 @@ jobs:
           $watcher = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
           & $watcher -SelfTest
           if (-not $?) { throw 'First same-host ATB3 self-test failed' }
+          # The self-test bypasses real Shell_TrayWnd snapshot and recovery.
+          # Instantiate every nested type used by the production code path.
+          $rect = New-Object AtbGeoWin32_ATB3_R1+RECT
+          $info = New-Object AtbGeoWin32_ATB3_R1+MONITORINFO
+          if ($rect -isnot [AtbGeoWin32_ATB3_R1+RECT]) { throw 'RECT constructor failed' }
+          if ($info -isnot [AtbGeoWin32_ATB3_R1+MONITORINFO]) { throw 'MONITORINFO constructor failed' }
+          $rect.Left = 17
+          $info.cbSize = [uint32][Runtime.InteropServices.Marshal]::SizeOf([type][AtbGeoWin32_ATB3_R1+MONITORINFO])
+          if ($rect.Left -ne 17 -or $info.cbSize -le 0) { throw 'Win32 nested struct fields inaccessible' }
           & $watcher -SelfTest
           if (-not $?) { throw 'Second same-host ATB3 self-test failed' }
-          Write-Host 'PASS: ATB3 same-shell reentry with old ATB2 type still loaded'
+          Write-Host 'PASS: ATB3 same-shell reentry and real-mode nested Win32 constructors'
       - name: Validate native source guard contract
         shell: pwsh
         run: python tests/test_native_mod_contract.py
