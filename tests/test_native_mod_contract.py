@@ -158,6 +158,17 @@ class NativeContract(unittest.TestCase):
         self.assertIn("if($disabled -ne 1)", watcher)
         self.assertIn('trial mod is enabled', preflight.lower())
 
+    def test_watchdog_same_host_add_type_is_reentrant(self):
+        watcher = (ROOT / 'experiments' / 'run-native-overhang-trial.ps1').read_text(encoding='utf-8')
+        self.assertIn("if (-not ('AtbGeoWin32_ATB3_R1' -as [type])) {", watcher)
+        self.assertIn('public static class AtbGeoWin32_ATB3_R1 {', watcher)
+        self.assertIn('[AtbGeoWin32_ATB3_R1]::', watcher)
+        self.assertNotIn('public static class AtbGeoWin32 {', watcher)
+        self.assertNotIn('[AtbGeoWin32]::', watcher)
+        workflow = (ROOT / '.github/workflows/native-visual-ci.yml').read_text(encoding='utf-8')
+        self.assertIn('Re-enter ATB3 watchdog twice in same Windows PowerShell 5.1 process', workflow)
+        self.assertIn('Add-Type -TypeDefinition', workflow)
+
     def test_watchdog_isolation(self):
         self.assertIn('$SelfTest', WATCHER)
         self.assertIn('atb-dev-selftest-', WATCHER)
