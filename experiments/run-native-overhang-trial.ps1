@@ -10,6 +10,15 @@
 # Requires explicit user execution for a future controlled trial.
 param([switch]$SelfTest, [switch]$TestUnresolved)
 $ErrorActionPreference='Stop'
+# SAFETY HOLD — October 30, 2026.
+# A real taskbar trial removed the application icon row and unloading the mod
+# failed to restore it. A manual Explorer restart restored the icons.
+# This production invocation is PERMANENTLY REFUSED in this candidate.
+# Keep only -SelfTest for disposable HWND and lease-fixture tests. Before
+# any new live trial, an independently reviewed recovery strategy is needed.
+if (-not $SelfTest) {
+    throw '[ATB] SAFETY HOLD: live taskbar trial disabled after loss of app icons and failed recovery. No lease armed, no Explorer/taskbar changes.'
+}
 # This trial never needs a registry write. The mod reads only its expiring
 # lease and remains inert after expiration or manual Explorer restart.
 $disarmModule=Join-Path $PSScriptRoot 'windhawk-17-own-mod-disarm.ps1'
