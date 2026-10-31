@@ -203,9 +203,9 @@ function Stop-NativeTrial(){
  if($nowHwnd -ne $trialHwnd){Write-Warning 'Taskbar HWND changed; no geometry write';return}
  [void][AtbGeoWin32_ATB3_R1]::GetWindowThreadProcessId($nowHwnd,[ref]$nowPid)
  if($nowPid -ne $explorerPid){Write-Warning 'Explorer PID changed; no geometry write';return}
- $rect=New-Object AtbGeoWin32+RECT
+ $rect=New-Object AtbGeoWin32_ATB3_R1+RECT
  if(-not [AtbGeoWin32_ATB3_R1]::GetWindowRect($trialHwnd,[ref]$rect)){return}
- $expected=New-Object AtbGeoWin32+RECT
+ $expected=New-Object AtbGeoWin32_ATB3_R1+RECT
  $expected.Left=$before.Left
  $expected.Top=$targetTop
  $expected.Right=$before.Right
@@ -254,7 +254,7 @@ function Stop-NativeTrial(){
  $ok=$false
  $clock=[Diagnostics.Stopwatch]::StartNew()
  while($clock.ElapsedMilliseconds -lt 3000){
-  $r=New-Object AtbGeoWin32+RECT
+  $r=New-Object AtbGeoWin32_ATB3_R1+RECT
   if([AtbGeoWin32_ATB3_R1]::GetWindowRect($trialHwnd,[ref]$r) -and (Same-Rect $r $before)){
    $ok=$true;break
   }
@@ -299,7 +299,7 @@ try{
   [void][AtbGeoWin32_ATB3_R1]::GetWindowThreadProcessId($trialHwnd,[ref]$pidFound)
   if($pidFound -eq 0){throw 'Explorer PID unavailable'}
   $explorerPid=$pidFound
-  $r=New-Object AtbGeoWin32+RECT
+  $r=New-Object AtbGeoWin32_ATB3_R1+RECT
   if(-not [AtbGeoWin32_ATB3_R1]::GetWindowRect($trialHwnd,[ref]$r)){throw 'Could not snapshot taskbar rectangle'}
   $before=$r
   # Take an independent, process-owned HRGN snapshot BEFORE publishing
@@ -323,7 +323,7 @@ try{
   $height=$before.Bottom-$before.Top
   if($height -lt 30 -or $height -gt 140){throw 'Unexpected taskbar height; fail closed'}
   $monitor=[AtbGeoWin32_ATB3_R1]::MonitorFromWindow($trialHwnd,2)
-  $info=New-Object AtbGeoWin32+MONITORINFO
+  $info=New-Object AtbGeoWin32_ATB3_R1+MONITORINFO
   $info.cbSize=[uint32][Runtime.InteropServices.Marshal]::SizeOf([type][AtbGeoWin32_ATB3_R1+MONITORINFO])
   if(-not [AtbGeoWin32_ATB3_R1]::GetMonitorInfo($monitor,[ref]$info)){throw 'Monitor unavailable'}
   if($before.Bottom -ne $info.monitor.Bottom){throw 'Only bottom-aligned primary taskbar supported'}
