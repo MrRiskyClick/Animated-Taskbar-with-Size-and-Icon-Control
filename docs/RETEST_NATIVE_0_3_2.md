@@ -4,8 +4,8 @@
 taskbar visuals and interactions.
 
 **CI-green source+watchdog commit:**
-`2aa68dc6ffc849033063b9da1c2a2fb27e2c325f`.
-[Native GitHub CI run 41148659219](https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/actions/runs/41148659219):
+`e1cae144ea6c0bbc723c4484d6f6012f3a09c624`.
+[Native GitHub CI run 41148864223](https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/actions/runs/41148864223):
 all three jobs passed (official Windhawk 1.7.3 DLL, portable contracts,
 and GitHub-hosted Windows watchdog/region snapshot fixtures).
 
@@ -31,7 +31,7 @@ Start from:
 
 ```powershell
 $dest = Join-Path (Get-Location) "Animated-Taskbar-Git"
-$commit = "2aa68dc6ffc849033063b9da1c2a2fb27e2c325f"
+$commit = "e1cae144ea6c0bbc723c4484d6f6012f3a09c624"
 if (git -C $dest status --porcelain) { throw "Local Git changes: stop" }
 git -C $dest fetch origin feature/full-native-mod-integration-v1
 if ($LASTEXITCODE -ne 0) { throw "Fetch failed" }
