@@ -121,6 +121,18 @@ jobs:
           }
           Write-Host 'PASS: unresolved prior ATB3 lease refuses rearm'
           $global:LASTEXITCODE = 0
+      - name: Re-enter ATB3 watchdog twice in same Windows PowerShell 5.1 process
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Simulate the old ATB2 class already loaded in an interactive shell.
+          Add-Type -TypeDefinition 'public static class AtbGeoWin32 {}'
+          $watcher = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          & $watcher -SelfTest
+          if (-not $?) { throw 'First same-host ATB3 self-test failed' }
+          & $watcher -SelfTest
+          if (-not $?) { throw 'Second same-host ATB3 self-test failed' }
+          Write-Host 'PASS: ATB3 same-shell reentry with old ATB2 type still loaded'
       - name: Validate native source guard contract
         shell: pwsh
         run: python tests/test_native_mod_contract.py
