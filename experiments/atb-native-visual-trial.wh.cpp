@@ -2,7 +2,7 @@
 // @id              atb-animated-taskbar-trial
 // @name              Animated Taskbar Native Hover (Developer Trial)
 // @description       Developer-only native icon magnification with collision-free push-out; guarded by an external expiring test lease.
-// @version           0.3.2
+// @version           0.3.3
 // @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
 // @license           GPL-3.0
 // @github            https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
@@ -47,9 +47,11 @@ lease is supplied; absent or invalid leases fail closed.
   bottom-anchors native background/buttons, and uses a reversible pixel
   region for icon footprints; native base height/icon resource sizing
   controls and cross-mod compatibility are still unverified.
-- The external watchdog can now disable ONLY this local Windhawk 1.7 mod
-  through its own exact registry Disabled value, and restore known native
-  geometry. This is not an authenticated/signed recovery service and
+- The external ATB3 watchdog makes NO registry changes. It verifies
+  this local Windhawk mod is initially disabled, then issues a bounded lease
+  and attempts to restore the original HWND geometry and region on expiry.
+  The Windhawk Enable switch can remain ON after expiry and must be turned
+  OFF manually. This is not an authenticated/signed recovery service and
   cannot guarantee immediate restoration while Explorer is hung.
 - Windows build/monitor/DPI and other Windhawk mod compatibility tests.
 
