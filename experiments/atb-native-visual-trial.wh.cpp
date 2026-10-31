@@ -247,8 +247,8 @@ experiments/THIRD_PARTY_NOTICES.md.
   $description:pt-BR: Desativa totalmente o bounce ocioso (“respirar”)
   $description:it-IT: Disattiva completamente il bounce inattivo (“respiro”)
 - EnableNativeOverhang: false
-  $name: Native unclipped overhang (experimental, 120-second ATB2 watchdog only)
-  $description: Resize only the transient native taskbar HWND, preserve the original desktop work area, and mask the empty overhang. Off by default. Requires the independent ATB2 geometry watchdog. Do not enable on a primary desktop until the full recovery gate passes.
+  $name: Native unclipped overhang (experimental, 120-second ATB3 watchdog only)
+  $description: Resize only the transient native taskbar HWND, preserve the original desktop work area, and mask the empty overhang. Off by default. Requires the independent ATB3 geometry watchdog. Do not enable on a primary desktop until the full recovery gate passes.
 */
 // ==/WindhawkModSettings==
 
@@ -707,7 +707,7 @@ std::map<void*, DockAnimationContext> g_contexts;
  * Opt-in temporary native overhang. The user-facing system taskbar reservation
  * is NOT altered; this only tests a taller Shell_TrayWnd HWND using the
  * SWP_NOSENDCHANGING path objectively validated on GitHub-hosted Windows.
- * Only a strict ATB2 watchdog lease authorizes it. No registry, auto-hide,
+ * Only a strict ATB3 watchdog lease authorizes it. No registry, auto-hide,
  * appbar registration, Explorer restart or other-mod setting changes.
  * Do NOT enable for a live machine until independent recovery tests pass.
  */
