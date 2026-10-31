@@ -35,6 +35,8 @@ jobs:
           /tmp/atb-region-tests
       - name: Static guard for development-only native mod
         run: python3 tests/test_native_mod_contract.py
+      - name: Static safety contract for separate hide-buttons mod
+        run: python3 tests/test_hide_buttons_contract.py
 
   windows-safety-fixture:
     name: Windows mock watchdog and motion fixtures
@@ -220,6 +222,19 @@ jobs:
           $hash = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
           Write-Host "WINDSHA256=$hash"
           Write-Host "DLL compiled for isolated GitHub CI only; never installed or run."
+      - name: Compile separate Taskbar Styler-compatible hide-buttons Windhawk mod
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'windhawk'
+          $compiler = Join-Path $base 'Compiler/bin/clang++.exe'
+          $flags = Join-Path $base 'Compiler/compile_flags.txt'
+          $headers = Join-Path $base 'Compiler/include'
+          $source = Join-Path (Get-Location) 'experiments/atb-hide-taskbar-buttons.wh.cpp'
+          $output = Join-Path $env:RUNNER_TEMP 'atb-hide-taskbar-buttons.dll'
+          & $compiler "@$flags" "-I$headers" -Werror=unused-function -Werror=unused-variable -shared -o $output $source -lole32 -loleaut32 -lruntimeobject
+          if ($LASTEXITCODE -ne 0) { throw 'Independent hide-buttons mod Windhawk compilation failed' }
+          if (-not (Test-Path $output)) { throw 'Compiled hide-buttons DLL missing' }
+          Write-Host 'PASS: separately compiled Taskbar Styler-compatible hide-buttons mod. CI only; not installed.'
       - name: Archive reviewed source only (no binary installer)
         uses: actions/upload-artifact@v4
         with:
