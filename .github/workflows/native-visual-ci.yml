@@ -110,6 +110,9 @@ jobs:
             throw "SAFETY FAILURE: unexpected watchdog error: $output"
           }
           Write-Host 'PASS: real taskbar trial refuses to arm before loading Win32 helper'
+          # The nonzero child exit code is EXPECTED. Reset native exit state so
+          # the successful safety assertion itself is not marked a failed job.
+          $global:LASTEXITCODE = 0
       - name: Run isolated ATB3 independent geometry lease self-test
         shell: pwsh
         run: |
