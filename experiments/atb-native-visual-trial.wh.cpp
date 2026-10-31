@@ -1,26 +1,19 @@
 // ==WindhawkMod==
 // @id              atb-animated-taskbar-trial
-// @name              Animated Taskbar Native Hover (Developer Trial)
-// @name:zh-CN        任务栏 Dock 动画
-// @name:ja-JP        タスクバー Dock アニメーション
-// @name:ko-KR        작업 표시줄 Dock 애니메이션
-// @name:pt-BR        Animação Dock da Barra de Tarefas
-// @name:it-IT        Animazione Dock della Barra delle applicazioni
+// @name              Animated Taskbar Native Hover (SAFETY HOLD)
 // @description       Developer-only native icon magnification with collision-free push-out; guarded by an external expiring test lease.
-// @description:uk-UA Анімація іконок панелі завдань, як в macOS, при наведенні
-// @description:zh-CN 类似 macOS 的任务栏图标悬停动画
-// @description:ja-JP macOS のように、マウスホバーでタスクバーアイコンをアニメーション表示します
-// @description:ko-KR macOS처럼 마우스를 올리면 작업 표시줄 아이콘이 애니메이션됩니다
-// @description:pt-BR Anima os ícones da barra de tarefas ao passar o mouse, como no macOS
-// @description:it-IT Anima le icone della barra delle applicazioni al passaggio del mouse, come su macOS
-// @version           0.2.0
-// @author            Animated Taskbar contributors (based on Ph0en1x-dev, MIT)
+// @version           0.3.4
+// @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
+// @license           GPL-3.0
 // @github            https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
 // @include           explorer.exe
 // @architecture      x86-64
-// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32
+// @compilerOptions -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32 -lgdi32
 // ==/WindhawkMod==
 
+// GPL-3.0-or-later developer branch: animation derives from MIT-licensed
+// Ph0en1x-dev, taskbar-group window count integration is adapted from
+// digART's GPL-3.0 Taskbar Count Badges v1.2.0. See THIRD_PARTY_NOTICES.md.
 // Experimental derivative of Ph0en1x-dev's Taskbar Dock Animation v1.9.2.
 // MIT-licensed upstream: https://github.com/ramensoftware/windhawk-mods/blob/main/mods/taskbar-dock-animation.wh.cpp
 // See THIRD_PARTY_NOTICES.md in the Animated Taskbar repository.
@@ -30,30 +23,47 @@
 
 // ==WindhawkModReadme==
 /*
-# Taskbar Dock Animation
+# Animated Taskbar — native developer integration
 
-This mod adds a macOS-like taskbar animation.
-The current version is **Beta-Testing** and not yet fully stable.
+**SAFETY HOLD — LIVE TRIAL DISABLED. No hooks or taskbar geometry changes.**
+The native button animation and reversible 0/1/2/3/4+ pips are in development.
+The October 30, 2026 real Windows trial lost the taskbar app icon row.
+Disabling the mod did not recover the icons; the user restarted Explorer.
+This v0.3.4 release refuses to initialize, EVEN with a lease.
+Do not reactivate live trials until recovery is independently verified.
 
-**Requires Windows 11 or newer to function.**
+## Currently implemented
+- Native Taskbar.TaskListButton XAML hover animation.
+- Frame-coherent size and spacing (including breathing/bounce width).
+- Native group-window count lookup: no pip when no windows, 1/2/3 dots,
+  4+ represented as a 22px bar, replacing our view of the native indicator.
+- Restore original native indicator and RenderTransform only when we still
+  own the element. No separator is added between pinned/running task buttons.
+- UI-thread timer detaches XAML handlers and reverts at lease expiry.
 
----
+## Not yet implemented / known release blockers
+- Native overhang is implemented as an OFF-BY-DEFAULT developer trial.
+  Actual XAML painting, native hit testing and user interactions in the
+  extended area have NOT been verified on the user's Windows taskbar.
+- The trial keeps desktop reservation unchanged, expands the XAML root,
+  bottom-anchors native background/buttons, and uses a reversible pixel
+  region for icon footprints; native base height/icon resource sizing
+  controls and cross-mod compatibility are still unverified.
+- The external ATB3 watchdog makes NO registry changes. It verifies
+  this local Windhawk mod is initially disabled, then issues a bounded lease
+  and attempts to restore the original HWND geometry and region on expiry.
+  The Windhawk Enable switch can remain ON after expiry and must be turned
+  OFF manually. This is not an authenticated/signed recovery service and
+  cannot guarantee immediate restoration while Explorer is hung.
+- Windows build/monitor/DPI and other Windhawk mod compatibility tests.
 
-### ⚠️ Known Issues & Limitations
-* Icons are sometimes clipped by the taskbar.
-* Upscaled icons may appear slightly blurry.
+The current experimental external PowerShell lease is **not** a trusted
+production recovery system. Do not install or enable this mod until the
+project's Stage 1 Windows watchdog gate passes.
 
-"Taskbar height and icon size" Users: If you are using this mod to create a minimalistic taskbar, please keep the Max Scale at or below 130% to avoid clipping issues. This recommendation applies to other scaling mods as well.
-Dell / Alienware Users: If you encounter specific issues on these devices, please reach out to me directly or open an issue so we can investigate together.
-StartAllBack Compatibility: This mod does not and will not support StartAllBack. Supporting it would require a complete rewrite of the codebase, which is currently out of scope.
-Feedback: Feel free to suggest new animation ideas or curves in the mod topic or via direct message!
-
-You can experiment with the **radius** value to achieve the best result for your setup until proper fixes for the issues above are found.
-
----
-
-## 🖼️ Preview
-![Taskbar Dock Animation Preview](https://raw.githubusercontent.com/Ph0en1x-dev/Hlam/refs/heads/main/Screen-recording-2025-11-06-155028.gif)
+Source: https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
+Credits: Ph0en1x-dev (MIT), digART (GPL-3.0), full notices in
+experiments/THIRD_PARTY_NOTICES.md.
 */
 // ==/WindhawkModReadme==
 
@@ -240,6 +250,9 @@ You can experiment with the **radius** value to achieve the best result for your
   $description:ko-KR: 대기 상태 ‘호흡’ 바운스를 완전히 비활성화합니다
   $description:pt-BR: Desativa totalmente o bounce ocioso (“respirar”)
   $description:it-IT: Disattiva completamente il bounce inattivo (“respiro”)
+- EnableNativeOverhang: false
+  $name: Native unclipped overhang (experimental, 120-second ATB3 watchdog only)
+  $description: Resize only the transient native taskbar HWND, preserve the original desktop work area, and mask the empty overhang. Off by default. Requires the independent ATB3 geometry watchdog. Do not enable on a primary desktop until the full recovery gate passes.
 */
 // ==/WindhawkModSettings==
 
@@ -253,6 +266,8 @@ You can experiment with the **radius** value to achieve the best result for your
 #include <winrt/Windows.UI.Xaml.Controls.h>
 #include <winrt/Windows.UI.Xaml.Input.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
+#include <winrt/Windows.UI.Xaml.Shapes.h>
+#include <winrt/Windows.UI.h>
 #include <winrt/Windows.UI.Input.h>
 #include <vector>
 #include <atomic>
@@ -264,7 +279,9 @@ You can experiment with the **radius** value to achieve the best result for your
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdint>
+#include <climits>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <winrt/Windows.UI.Xaml.Automation.h>
 
@@ -286,6 +303,7 @@ struct {
     int excludeSystemButtonsMode;
     double lerpSpeed;
     bool disableBounce;
+    bool enableNativeOverhang;
 } g_settings;
 
 
@@ -312,36 +330,82 @@ unsigned long long UtcMillis() {
     return (v.QuadPart - 116444736000000000ULL) / 10000ULL;
 }
 
+struct WindowGeometryLease {
+    bool valid = false;
+    RECT original{};
+    LONG expectedTop = 0;
+    DWORD watcherPid = 0;
+    unsigned int baselineRegionMode=0;
+    ULONGLONG baselineRegionHash=0;
+};
+WindowGeometryLease geometry;
+unsigned long long originalUtcDeadline=0;
+
 bool ReadLease(unsigned long long* expires) {
     if (leasePath.empty()) return false;
     HANDLE f = CreateFileW(leasePath.c_str(), GENERIC_READ,
                            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) return false;
-    char buffer[160]{};
+    char buffer[256]{};
     DWORD read = 0;
-    BOOL ok = ReadFile(f, buffer, sizeof(buffer) - 1, &read, nullptr);
+    BOOL ok = ReadFile(f, buffer, sizeof(buffer)-1, &read, nullptr);
     CloseHandle(f);
     if (!ok || read < 15 || read >= sizeof(buffer)-1) return false;
-    unsigned long explorerPid = 0, watcherPid = 0;
-    unsigned long long deadline = 0, heartbeat = 0;
-    char extra = 0;
-    // Reject extra tokens. A full line of four numbers is the only accepted
-    // lease format; it is not a cryptographic signature.
-    int fields = std::sscanf(buffer, "ATB1 %lu %llu %llu %lu %c",
-                              &explorerPid, &deadline, &heartbeat,
-                              &watcherPid, &extra);
-    if (fields != 4 || explorerPid != GetCurrentProcessId() ||
-        !watcherPid || !deadline || !heartbeat) return false;
-    auto now = UtcMillis();
-    if (heartbeat > now + 1500 || now - std::min(now, heartbeat) > 1800 ||
-        deadline <= now || deadline > now + 120000ULL) return false;
-    HANDLE watcher = OpenProcess(SYNCHRONIZE, FALSE, watcherPid);
-    if (!watcher) return false;
-    DWORD alive = WaitForSingleObject(watcher, 0);
+    unsigned long explorerPid=0, watcherPid=0;
+    unsigned long long deadline=0, heartbeat=0;
+    WindowGeometryLease observed{};
+    char extra=0;
+    int fields=0;
+    // ATB3 explicitly pins the original HWND region owned by the watcher.
+    // Older leases cannot authorize modification of pre-existing regions.
+    if(std::strncmp(buffer,"ATB3 ",5)!=0)return false;
+    LONG x0=0,y0=0,x1=0,y1=0,targetTop=0;
+    unsigned int regionMode=0;
+    unsigned long long regionHash=0;
+    fields=std::sscanf(buffer,
+        "ATB3 %lu %llu %llu %lu %ld %ld %ld %ld %ld %u %llu %c",
+        &explorerPid,&deadline,&heartbeat,&watcherPid,
+        &x0,&y0,&x1,&y1,&targetTop,&regionMode,&regionHash,&extra);
+    if(fields!=11 || regionMode>1 ||
+       (regionMode==0 && regionHash!=0) ||
+       (regionMode==1 && regionHash==0))return false;
+    if(x1<=x0 || y1-y0<30 || y1-y0>140 ||
+       x1-x0<400 || targetTop>=y0-24 ||
+       targetTop<y0-160 || targetTop>=y1)return false;
+    observed.valid=true;
+    observed.original={x0,y0,x1,y1};
+    observed.expectedTop=targetTop;
+    observed.watcherPid=watcherPid;
+    observed.baselineRegionMode=regionMode;
+    observed.baselineRegionHash=regionHash;
+    if(explorerPid!=GetCurrentProcessId() || !watcherPid ||
+       !deadline || !heartbeat) return false;
+    const auto now=UtcMillis();
+    if (heartbeat>now+1500 || now-std::min(now,heartbeat)>1800 ||
+        deadline<=now || deadline>now+120000ULL) return false;
+    HANDLE watcher=OpenProcess(SYNCHRONIZE,FALSE,watcherPid);
+    if(!watcher) return false;
+    DWORD alive=WaitForSingleObject(watcher,0);
     CloseHandle(watcher);
-    if (alive != WAIT_TIMEOUT) return false;
-    *expires = deadline;
+    if(alive!=WAIT_TIMEOUT) return false;
+
+    // Once a lease is armed, its geometry, process owner and deadline cannot
+    // change via the file, even if a second writer attempts to tamper with it.
+    if(armed.load()) {
+        if(geometry.valid!=observed.valid) return false;
+        if(geometry.valid &&
+           (geometry.watcherPid!=observed.watcherPid ||
+            geometry.expectedTop!=observed.expectedTop ||
+            geometry.baselineRegionMode!=observed.baselineRegionMode ||
+            geometry.baselineRegionHash!=observed.baselineRegionHash ||
+            deadline!=originalUtcDeadline ||
+            std::memcmp(&geometry.original,&observed.original,sizeof(RECT))!=0))
+            return false;
+    } else {
+        geometry=observed;
+    }
+    *expires=deadline;
     return true;
 }
 
@@ -355,6 +419,7 @@ bool Arm() {
     if (!ReadLease(&expires)) return false;
     auto until = expires - UtcMillis();
     if (until > 120000ULL) return false;
+    originalUtcDeadline=expires;
     deadlineTick = GetTickCount64() + until;
     lastCheckedTick = 0;
     armed = true;
@@ -412,6 +477,166 @@ struct IconAnimState {
     double waveTranslateX = 0.0;
 };
 
+
+// Taskbar Count Badges (digART, GPL-3.0) established these Windows 11
+// TaskListGroupViewModel ABI symbols and the Count-1 normalization.
+// This independent rendering implementation intentionally uses only the
+// read-only lookup. When symbols are missing, native pips remain untouched.
+using AtbGetGroupFromButton_t = void*(WINAPI*)(void**, UIElement*);
+using AtbGetGroupCount_t = HRESULT(WINAPI*)(void*, unsigned int*);
+AtbGetGroupFromButton_t g_atbGetGroupFromButton = nullptr;
+AtbGetGroupCount_t g_atbGetGroupCount = nullptr;
+
+struct AtbPipSnapshot {
+    winrt::weak_ref<FrameworkElement> button;
+    winrt::weak_ref<FrameworkElement> nativeIndicator;
+    winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::Panel> parent;
+    winrt::weak_ref<winrt::Windows::UI::Xaml::Controls::StackPanel> ours;
+    double indicatorOpacity = 1.0;
+    unsigned lastCount = UINT_MAX;
+};
+std::unordered_map<void*, AtbPipSnapshot> g_atbPips;
+
+FrameworkElement AtbFindNamed(FrameworkElement element, wchar_t const* name, unsigned depth = 0) {
+    if (!element || depth > 20) return nullptr;
+    if (element.Name() == name) return element;
+    int children = Media::VisualTreeHelper::GetChildrenCount(element);
+    for (int i = 0; i < children; ++i) {
+        auto child = Media::VisualTreeHelper::GetChild(element, i).try_as<FrameworkElement>();
+        if (!child) continue;
+        auto found = AtbFindNamed(child, name, depth + 1);
+        if (found) return found;
+    }
+    return nullptr;
+}
+
+bool AtbReadWindowCount(FrameworkElement const& button, unsigned& count) {
+    count = 0;
+    if (!g_atbGetGroupFromButton || !g_atbGetGroupCount) return false;
+    try {
+        auto element = button.as<UIElement>();
+        winrt::com_ptr<IUnknown> group;
+        g_atbGetGroupFromButton(group.put_void(), &element);
+        if (!group) return false;
+        unsigned raw = 0;
+        if (FAILED(g_atbGetGroupCount(group.get(), &raw))) return false;
+        count = raw > 0 ? raw - 1 : 0; // Windows 11 TaskListGroupViewModel
+        return true;
+    } catch (...) { return false; }
+}
+
+void AtbRestorePips() {
+    for (auto& [identity, pip] : g_atbPips) {
+        try {
+            auto indicator = pip.nativeIndicator.get();
+            if (indicator && indicator.Opacity() == 0.0) {
+                indicator.Opacity(pip.indicatorOpacity);
+            }
+            auto parent = pip.parent.get();
+            auto overlay = pip.ours.get();
+            if (parent && overlay) {
+                auto children = parent.Children();
+                unsigned idx = 0;
+                if (children.IndexOf(overlay, idx)) children.RemoveAt(idx);
+            }
+        } catch (...) {}
+    }
+    g_atbPips.clear();
+}
+
+void AtbUpdatePip(AtbPipSnapshot& pip) {
+    auto button = pip.button.get();
+    if (!button) return;
+    unsigned count = 0;
+    if (!AtbReadWindowCount(button, count)) return; // fail unchanged
+    if (count == pip.lastCount) {
+        // XAML VisualStateManager and third-party stylers can reapply opacity
+        // without changing the window count. While our overlay owns the
+        // indicator, keep the native duplicate invisible.
+        if (count) {
+            if (auto native = pip.nativeIndicator.get()) {
+                if (native.Opacity() != 0.0) native.Opacity(0.0);
+            }
+        }
+        return;
+    }
+    pip.lastCount = count;
+    using namespace winrt::Windows::UI::Xaml;
+    using namespace winrt::Windows::UI::Xaml::Controls;
+    using namespace winrt::Windows::UI::Xaml::Shapes;
+
+    auto indicator = pip.nativeIndicator.get();
+    auto overlay = pip.ours.get();
+    if (indicator) indicator.Opacity(count ? 0.0 : pip.indicatorOpacity);
+    if (!overlay) return;
+    overlay.Children().Clear();
+    overlay.Visibility(count ? Visibility::Visible : Visibility::Collapsed);
+    if (!count) return;
+    auto brush = Media::SolidColorBrush(winrt::Windows::UI::Colors::White());
+    auto dots = std::min(count, 3u);
+    if (count <= 3) {
+        for (unsigned i = 0; i < dots; ++i) {
+            winrt::Windows::UI::Xaml::Shapes::Ellipse dot;
+            dot.Width(4.0); dot.Height(4.0);
+            dot.Fill(brush);
+            dot.Margin(Thickness{2.0, 0.0, 2.0, 0.0});
+            overlay.Children().Append(dot);
+        }
+    } else {
+        winrt::Windows::UI::Xaml::Shapes::Rectangle bar;
+        bar.Width(22.0); bar.Height(4.0);
+        bar.RadiusX(2.0); bar.RadiusY(2.0);
+        bar.Fill(brush);
+        overlay.Children().Append(bar);
+    }
+}
+
+void AtbEnsurePip(FrameworkElement const& button) {
+    if (!g_atbGetGroupFromButton || !g_atbGetGroupCount) return;
+    if (winrt::get_class_name(button) != L"Taskbar.TaskListButton") return;
+    void* key = winrt::get_abi(button);
+    auto found = g_atbPips.find(key);
+    if (found != g_atbPips.end()) {
+        AtbUpdatePip(found->second);
+        return;
+    }
+    auto indicator = AtbFindNamed(button, L"RunningIndicator");
+    if (!indicator) return;
+    auto parent = Media::VisualTreeHelper::GetParent(indicator)
+                      .try_as<winrt::Windows::UI::Xaml::Controls::Panel>();
+    if (!parent) return;
+    using namespace winrt::Windows::UI::Xaml;
+    using namespace winrt::Windows::UI::Xaml::Controls;
+    StackPanel overlay;
+    overlay.Name(L"AnimatedTaskbarCountPips");
+    overlay.Orientation(Orientation::Horizontal);
+    overlay.HorizontalAlignment(HorizontalAlignment::Center);
+    overlay.VerticalAlignment(VerticalAlignment::Bottom);
+    overlay.Margin(Thickness{0.0, 0.0, 0.0, 3.0});
+    overlay.IsHitTestVisible(false);
+    overlay.Visibility(Visibility::Collapsed);
+    parent.Children().Append(overlay);
+    AtbPipSnapshot pip;
+    pip.button = button;
+    pip.nativeIndicator = indicator;
+    pip.parent = parent;
+    pip.ours = overlay;
+    pip.indicatorOpacity = indicator.Opacity();
+    g_atbPips.emplace(key, std::move(pip));
+    AtbUpdatePip(g_atbPips.at(key));
+}
+
+void AtbUpdatePips() {
+    for (auto it = g_atbPips.begin(); it != g_atbPips.end();) {
+        if (!it->second.button.get()) {
+            it = g_atbPips.erase(it);
+            continue;
+        }
+        AtbUpdatePip(it->second);
+        ++it;
+    }
+}
+
 // Per-monitor context
 
 /*
@@ -440,7 +665,9 @@ void AtbRestoreSingle(FrameworkElement const& e) {
     }
     g_atbTransformSnapshots.erase(it);
 }
+void AtbRestorePips();
 void AtbRestoreAll() {
+    AtbRestorePips();
     for (auto& [key, snap] : g_atbTransformSnapshots) {
         try {
             auto e = snap.element.get();
@@ -478,6 +705,542 @@ struct DockAnimationContext {
 
 // One context per monitor (keyed by XAML instance pointer)
 std::map<void*, DockAnimationContext> g_contexts;
+
+
+/*
+ * Opt-in temporary native overhang. The user-facing system taskbar reservation
+ * is NOT altered; this only tests a taller Shell_TrayWnd HWND using the
+ * SWP_NOSENDCHANGING path objectively validated on GitHub-hosted Windows.
+ * Only a strict ATB3 watchdog lease authorizes it. No registry, auto-hide,
+ * appbar registration, Explorer restart or other-mod setting changes.
+ * Do NOT enable for a live machine until independent recovery tests pass.
+ */
+struct AtbFrameChildSnapshot {
+    winrt::weak_ref<FrameworkElement> element;
+    Transform original{nullptr};
+    TransformGroup ours{nullptr};
+    double originalHeight=0;
+    double appliedHeight=0;
+};
+struct AtbNativeOverhang {
+    HWND hwnd=nullptr;
+    RECT original{};
+    RECT expected{};
+    RECT baselineWork{};
+    int extraPixels=0;
+    double dpiScale=1.0;
+    bool active=false;
+    winrt::weak_ref<FrameworkElement> frame;
+    Transform frameOriginal{nullptr};
+    TransformGroup ours{nullptr};
+    winrt::Windows::Foundation::Point frameOrigin{};
+    double frameOriginalHeight=0.0;
+    double frameAppliedHeight=0.0;
+    bool heightOwned=false;
+    std::vector<AtbFrameChildSnapshot> shiftedChildren;
+    HRGN lastRegion=nullptr; // owned duplicate; never passed to Windows
+    HRGN baseRegion=nullptr; // private pre-trial region copy
+    bool hadBaseRegion=false;
+} g_atbOverhang;
+
+bool AtbEqualRect(RECT a, RECT b) {
+    return EqualRect(&a,&b)!=0;
+}
+// Stable 64-bit FNV-1a over Win32 RGNDATA, published alongside our ownership
+// marker. The independent watchdog must compare this fingerprint with the
+// actual GetWindowRgn contents before it may clear a taskbar window region.
+// This is a CONFLICT DETECTOR, not cryptographic authentication.
+ULONGLONG AtbRegionFingerprint(HRGN region) {
+    if(!region)return 0;
+    DWORD length=GetRegionData(region,0,nullptr);
+    if(length<sizeof(RGNDATAHEADER)||length>1024*1024)return 0;
+    std::vector<BYTE> bytes(length);
+    auto* regionData=reinterpret_cast<RGNDATA*>(bytes.data());
+    if(GetRegionData(region,length,regionData)!=length)return 0;
+    ULONGLONG result=14695981039346656037ULL;
+    for(BYTE byte:bytes) {
+        result^=byte;
+        result*=1099511628211ULL;
+    }
+    return result ? result : 1;
+}
+bool AtbOurRegionFingerprintMatches() {
+    auto& a=g_atbOverhang;
+    if(!a.active || !a.lastRegion || !IsWindow(a.hwnd))return false;
+    HRGN current=CreateRectRgn(0,0,0,0);
+    if(!current)return false;
+    const int type=GetWindowRgn(a.hwnd,current);
+    const ULONGLONG actual=type==ERROR ? 0 : AtbRegionFingerprint(current);
+    DeleteObject(current);
+    const auto expected=AtbRegionFingerprint(a.lastRegion);
+    const auto marker=(ULONGLONG)(ULONG_PTR)GetPropW(
+                        a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+    return actual!=0 && marker!=0 && expected!=0 &&
+           actual==expected && marker==expected;
+}
+bool AtbIsOurRegion() {
+    if(!g_atbOverhang.active || !g_atbOverhang.lastRegion) return false;
+    HRGN actual=CreateRectRgn(0,0,0,0);
+    if(!actual) return false;
+    int type=GetWindowRgn(g_atbOverhang.hwnd,actual);
+    bool ours=type!=ERROR && EqualRgn(actual,g_atbOverhang.lastRegion);
+    DeleteObject(actual);
+    return ours;
+}
+bool AtbBaselineRegionMatches(HWND hwnd) {
+    HRGN current=CreateRectRgn(0,0,0,0);
+    if(!current)return false;
+    const int kind=GetWindowRgn(hwnd,current);
+    const auto actual=kind==ERROR ? 0 : AtbRegionFingerprint(current);
+    DeleteObject(current);
+    auto const& lease=atb_trial::geometry;
+    return lease.valid && (kind==ERROR ?
+        lease.baselineRegionMode==0 && lease.baselineRegionHash==0 :
+        lease.baselineRegionMode==1 && actual!=0 &&
+        actual==lease.baselineRegionHash);
+}
+HRGN AtbMakeBaselineCopy() {
+    auto const& a=g_atbOverhang;
+    if(!a.hadBaseRegion)return nullptr;
+    HRGN copy=CreateRectRgn(0,0,0,0);
+    if(!copy)return nullptr;
+    if(!a.baseRegion || CombineRgn(copy,a.baseRegion,nullptr,RGN_COPY)==ERROR) {
+        DeleteObject(copy);
+        return nullptr;
+    }
+    return copy;
+}
+bool AtbRestoreBaselineRegion() {
+    auto& a=g_atbOverhang;
+    HRGN original=AtbMakeBaselineCopy();
+    if(a.hadBaseRegion && !original)return false;
+    if(!SetWindowRgn(a.hwnd,original,TRUE)){
+        if(original)DeleteObject(original);
+        return false;
+    }
+    return true; // Window owns original after success.
+}
+HRGN AtbMakeBottomRegion() {
+    auto& a=g_atbOverhang;
+    if(!a.hadBaseRegion)
+        return CreateRectRgn(0,a.extraPixels,
+                     a.expected.right-a.expected.left,
+                     a.expected.bottom-a.expected.top);
+    HRGN region=AtbMakeBaselineCopy();
+    if(!region)return nullptr;
+    if(OffsetRgn(region,0,a.extraPixels)==ERROR) {
+        DeleteObject(region);
+        return nullptr;
+    }
+    return region;
+}
+void AtbRestoreNativeOverhang() {
+    auto& a=g_atbOverhang;
+    if(!a.active) return;
+    // Restore inside-out, and only if our own transform/height still owns
+    // that control. Never clobber intervening Taskbar Styler edits.
+    for(auto it=a.shiftedChildren.rbegin();it!=a.shiftedChildren.rend();++it) {
+        try {
+            auto child=it->element.get();
+            if(!child || winrt::get_abi(child.RenderTransform())!=
+                         winrt::get_abi(it->ours)) continue;
+            child.RenderTransform(it->original);
+            if(std::abs(child.Height()-it->appliedHeight)<0.05)
+                child.Height(it->originalHeight);
+        } catch (...) { Wh_Log(L"[ATB] Child layout restoration skipped"); }
+    }
+    a.shiftedChildren.clear();
+    try {
+        auto frame=a.frame.get();
+        if(frame && a.heightOwned &&
+           std::abs(frame.Height()-a.frameAppliedHeight)<0.05)
+            frame.Height(a.frameOriginalHeight);
+    } catch (...) { Wh_Log(L"[ATB] Could not restore root frame height"); }
+    if(IsWindow(a.hwnd)) {
+        DWORD pid=0;
+        GetWindowThreadProcessId(a.hwnd,&pid);
+        if(pid==GetCurrentProcessId()) {
+            auto marker=GetPropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+            if(marker==(HANDLE)(ULONG_PTR)atb_trial::geometry.watcherPid) {
+                // Check BOTH exact pixel geometry and separately published
+                // fingerprint. If an unrelated mod replaced the region,
+                // never clear or reassign its visual/input geometry.
+                if(AtbIsOurRegion() && AtbOurRegionFingerprintMatches()) {
+                    if(AtbRestoreBaselineRegion()) {
+                        RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+                        RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+                        Wh_Log(L"[ATB] Original taskbar region restored exactly");
+                    }else{
+                        Wh_Log(L"[ATB] Baseline region restore failed; independent watchdog must restore");
+                    }
+                } else {
+                    RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+                    RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+                    Wh_Log(L"[ATB] Region ownership no longer verified; preserved foreign state");
+                }
+            }
+            RECT now{};
+            if(GetWindowRect(a.hwnd,&now) && AtbEqualRect(now,a.expected)) {
+                SetWindowPos(a.hwnd,nullptr,a.original.left,a.original.top,
+                    a.original.right-a.original.left,
+                    a.original.bottom-a.original.top,
+                    SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER|
+                    SWP_NOSENDCHANGING);
+            }
+        }
+    }
+    if(a.lastRegion) DeleteObject(a.lastRegion);
+    a.lastRegion=nullptr;
+    if(a.baseRegion) DeleteObject(a.baseRegion);
+    a.baseRegion=nullptr;
+    a.hadBaseRegion=false;
+    a.frame=nullptr;
+    a.frameOriginal=nullptr;
+    a.ours=nullptr;
+    a.heightOwned=false;
+    a.shiftedChildren.clear();
+    a.hwnd=nullptr;
+    a.active=false;
+    Wh_Log(L"[ATB] Native overhang restoration requested");
+}
+
+bool AtbSetRegion(HRGN next) {
+    auto& a=g_atbOverhang;
+    if(!a.active || !next) return false;
+    if(a.lastRegion && EqualRgn(next,a.lastRegion)) {
+        DeleteObject(next);
+        return AtbIsOurRegion() && AtbOurRegionFingerprintMatches();
+    }
+    if(a.lastRegion &&
+       (!AtbIsOurRegion() || !AtbOurRegionFingerprintMatches())) {
+        DeleteObject(next);
+        Wh_Log(L"[ATB] Foreign window region detected; no overwrite");
+        // Property must be cleared before the external watcher attempts to
+        // reset it. Preserve any external region.
+        RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+        RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+        return false;
+    }
+    HRGN copy=CreateRectRgn(0,0,0,0);
+    if(!copy || CombineRgn(copy,next,nullptr,RGN_COPY)==ERROR) {
+        if(copy)DeleteObject(copy);
+        DeleteObject(next);
+        return false;
+    }
+    if(!SetWindowRgn(a.hwnd,next,TRUE)) {
+        DeleteObject(next);
+        DeleteObject(copy);
+        return false;
+    }
+    if(a.lastRegion) DeleteObject(a.lastRegion);
+    a.lastRegion=copy;
+    const auto fingerprint=AtbRegionFingerprint(copy);
+    if(!fingerprint || !SetPropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2",
+                                (HANDLE)(ULONG_PTR)fingerprint)) {
+        Wh_Log(L"[ATB] Region fingerprint publication failed; rolling back just-applied region");
+        // A successful SetWindowRgn preceded this failure. The journal hash
+        // was not published, so the watchdog deliberately cannot clear it.
+        // Revert synchronously ONLY if our own exact pixel region remains.
+        if(AtbIsOurRegion()) {
+            if(AtbRestoreBaselineRegion()) {
+                RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+                RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+            }else{
+                Wh_Log(L"[ATB] Baseline region restore failed; watchdog recovery required");
+            }
+        }
+        return false;
+    }
+    return true;
+}
+
+bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
+    auto& a=g_atbOverhang;
+    if(!g_settings.enableNativeOverhang || a.active ||
+       !atb_trial::geometry.valid || !taskbarFrame) {
+        Wh_Log(L"[ATB] Overhang unavailable: setting=%d active=%d leaseGeometry=%d",
+               (int)g_settings.enableNativeOverhang,(int)a.active,
+               (int)atb_trial::geometry.valid);
+        return false;
+    }
+    HWND hwnd=FindWindowW(L"Shell_TrayWnd",nullptr);
+    DWORD pid=0;
+    if(!hwnd || !GetWindowThreadProcessId(hwnd,&pid) ||
+       pid!=GetCurrentProcessId()) return false;
+    RECT before{};
+    if(!GetWindowRect(hwnd,&before) ||
+       !AtbEqualRect(before,atb_trial::geometry.original)) {
+        Wh_Log(L"[ATB] Overhang refused: native HWND rectangle differs from watcher baseline");
+        return false;
+    }
+    if(GetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2"))return false;
+    if(!AtbBaselineRegionMatches(hwnd)) {
+        Wh_Log(L"[ATB] Overhang refused: native HWND region differs from ATB3 watchdog snapshot");
+        return false;
+    }
+    MONITORINFO mi{sizeof(mi)};
+    if(!GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&mi))
+        return false;
+    if(before.bottom!=mi.rcMonitor.bottom)return false;
+    // This mod's native HWND overhang is explicitly PRIMARY TASKBAR ONLY.
+    // The XAML pointer hook also fires for secondary monitor taskbars.
+    // Never reposition the primary taskbar due to a secondary monitor hover.
+    POINT cursor{};
+    if(!GetCursorPos(&cursor) || !PtInRect(&before,cursor) ||
+       MonitorFromPoint(cursor,MONITOR_DEFAULTTONULL)!=
+           MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST)) {
+        Wh_Log(L"[ATB] Native overhang refused: pointer is not on primary taskbar");
+        return false;
+    }
+    if(std::abs(taskbarFrame.ActualWidth()*((double)GetDpiForWindow(hwnd)/96.0) -
+                (before.right-before.left))>4.0) {
+        Wh_Log(L"[ATB] Overhang refused: XAML frame width %g DIP != HWND %ld px",
+               taskbarFrame.ActualWidth(),before.right-before.left);
+        return false;
+    }
+    RECT wanted=before;
+    wanted.top=atb_trial::geometry.expectedTop;
+    const int extra=before.top-wanted.top;
+    if(extra<24||extra>160) return false;
+
+    a.hwnd=hwnd; a.original=before; a.expected=wanted;
+    a.baselineWork=mi.rcWork;
+    a.dpiScale=(double)GetDpiForWindow(hwnd)/96.0;
+    if(a.dpiScale<=0 || a.dpiScale>5.0) return false;
+    a.extraPixels=extra;
+    HRGN baseline=CreateRectRgn(0,0,0,0);
+    if(!baseline)return false;
+    const int regionKind=GetWindowRgn(hwnd,baseline);
+    if(regionKind==ERROR) {
+        DeleteObject(baseline);
+        baseline=nullptr;
+    }
+    // Race guard: re-read against the watcher baseline just before mutating.
+    if(!AtbBaselineRegionMatches(hwnd)){
+        if(baseline)DeleteObject(baseline);
+        Wh_Log(L"[ATB] Overhang refused: region changed during start");
+        return false;
+    }
+    a.hadBaseRegion=(regionKind!=ERROR);
+    a.baseRegion=baseline;
+    a.active=true; // cleanup is now armed before any native window mutation
+    Wh_Log(L"[ATB] Watchdog owns original HWND region (mode=%d, fingerprint=%llu)",
+           (int)a.hadBaseRegion,atb_trial::geometry.baselineRegionHash);
+    // Only live trial mutation: move the existing native taskbar HWND upward
+    // without asking the shell to increase its registered appbar reservation.
+    if(!SetWindowPos(hwnd,nullptr,wanted.left,wanted.top,
+          wanted.right-wanted.left,wanted.bottom-wanted.top,
+          SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER|
+          SWP_NOSENDCHANGING)) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    RECT now{};
+    MONITORINFO after{sizeof(after)};
+    if(!GetWindowRect(hwnd,&now) || !AtbEqualRect(now,wanted) ||
+       !GetMonitorInfoW(MonitorFromWindow(hwnd,MONITOR_DEFAULTTONEAREST),&after) ||
+       !AtbEqualRect(after.rcWork,a.baselineWork)) {
+        // Never continue if the system increases reserved desktop space.
+        if(AtbEqualRect(now,wanted)) {
+            SetWindowPos(hwnd,nullptr,before.left,before.top,
+                 before.right-before.left,before.bottom-before.top,
+                 SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSENDCHANGING);
+        }
+        Wh_Log(L"[ATB] Extended native HWND or work-area invariant failed; aborted");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    try {
+    // Give the root TaskbarFrame the entire visual/input height. Keeping
+    // the ROOT at the old 42px height would prevent hit testing on animated
+    // icons that extend above it even when the Win32 region is correct.
+    // Instead shift only the original-height taskbar content controls down.
+    a.frame=taskbarFrame;
+    a.frameOriginal=taskbarFrame.RenderTransform();
+    a.frameOrigin=taskbarFrame.RenderTransformOrigin();
+    a.frameOriginalHeight=taskbarFrame.Height();
+    const double originalDip=taskbarFrame.ActualHeight();
+    const double extraDip=(double)extra/a.dpiScale;
+    if(!(originalDip>0.0 && std::isfinite(originalDip)) ||
+       !(extraDip>0.0 && std::isfinite(extraDip))) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    // Windows 11 hierarchy: TaskbarFrame -> RootGrid -> taskbar repeater,
+    // tasklist, background, gripper, and system tray. Moving independently
+    // chosen descendants is fragile: ItemsRepeater may be nested >2 levels,
+    // and translating both parent and child can double the vertical shift.
+    // Bottom-anchor the ONE direct RootGrid as a complete original-height
+    // native strip, while its parent TaskbarFrame owns the taller region.
+    FrameworkElement rootGrid{nullptr};
+    const int directChildren=Media::VisualTreeHelper::GetChildrenCount(taskbarFrame);
+    for(int i=0;i<directChildren;++i) {
+        auto child=Media::VisualTreeHelper::GetChild(taskbarFrame,i)
+                       .try_as<FrameworkElement>();
+        if(child && child.Name()==L"RootGrid") {
+            if(rootGrid) {
+                Wh_Log(L"[ATB] Overhang refused: multiple RootGrid children");
+                AtbRestoreNativeOverhang();
+                return false;
+            }
+            rootGrid=child;
+        }
+    }
+    if(!rootGrid) {
+        Wh_Log(L"[ATB] Overhang refused: no direct RootGrid under TaskbarFrame");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    const double rootStripHeight=rootGrid.ActualHeight();
+    if(!(rootStripHeight>0.0 && std::isfinite(rootStripHeight)) ||
+       std::abs(rootStripHeight-originalDip)>5.0 ||
+       std::abs(rootGrid.ActualWidth()-taskbarFrame.ActualWidth())>5.0) {
+        Wh_Log(L"[ATB] Overhang refused: RootGrid dimensions incompatible (root=%g, frame=%g)",
+               rootStripHeight,originalDip);
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    // An explicit pre-existing XAML clip may belong to another taskbar mod.
+    // Do not clear that clip: fail closed instead of damaging its ownership.
+    if(rootGrid.Clip()) {
+        Wh_Log(L"[ATB] Overhang refused: RootGrid has a pre-existing Clip");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    AtbFrameChildSnapshot original;
+    original.element=rootGrid;
+    original.original=rootGrid.RenderTransform();
+    original.originalHeight=rootGrid.Height();
+    original.appliedHeight=rootStripHeight;
+    TransformGroup translated;
+    if(original.original)translated.Children().Append(original.original);
+    TranslateTransform translate;
+    translate.Y(extraDip);
+    translated.Children().Append(translate);
+    original.ours=translated;
+    a.frameAppliedHeight=originalDip+extraDip;
+    a.heightOwned=true; // inverse journal before XAML setters
+    a.shiftedChildren.push_back(std::move(original));
+    taskbarFrame.Height(a.frameAppliedHeight);
+    // Explicit original-size strip avoids native background/tray expanding
+    // with the taller TaskbarFrame. One transform, not nested translations.
+    rootGrid.Height(rootStripHeight);
+    rootGrid.RenderTransform(translated);
+    Wh_Log(L"[ATB] XAML RootGrid bottom-anchored by %g DIP; frame %g -> %g DIP",
+           extraDip,originalDip,a.frameAppliedHeight);
+
+    if(!SetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2",
+             (HANDLE)(ULONG_PTR)atb_trial::geometry.watcherPid)) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    // Only the native bottom strip accepts hits until an actual magnified
+    // icon extends into the overhang. Never grab empty desktop pixels.
+    if(!AtbBaselineRegionMatches(hwnd)) {
+        Wh_Log(L"[ATB] Overhang refused: original region modified before first replacement");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    HRGN region=AtbMakeBottomRegion();
+    if(!AtbSetRegion(region)) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    Wh_Log(L"[ATB] Native overhang trial active: +%dpx, reserved desktop unchanged",
+           extra);
+    return true;
+    } catch (...) {
+        Wh_Log(L"[ATB] Exception while setting up native overhang; restoring baseline");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+}
+
+void AtbUpdateNativeOverhangRegion(DockAnimationContext const& ctx) {
+    auto& a=g_atbOverhang;
+    if(!a.active)return;
+    // Secondary-monitor contexts have independent icon coordinates. Their
+    // geometry must NEVER overwrite the primary taskbar's window region.
+    auto frame=ctx.taskbarFrame.get();
+    if(!frame || winrt::get_abi(frame)!=winrt::get_abi(a.frame.get()))
+        return;
+    RECT now{};
+    if(!GetWindowRect(a.hwnd,&now)||!AtbEqualRect(now,a.expected)) {
+        Wh_Log(L"[ATB] Shell changed taskbar geometry; disabling trial overhang");
+        AtbRestoreNativeOverhang();
+        return;
+    }
+    const int width=now.right-now.left, height=now.bottom-now.top;
+    HRGN full=AtbMakeBottomRegion();
+    if(!full)return;
+    // Use the live XAML transform graph, not a synthetic card center or a
+    // constant half-taskbar Y. The old synthetic coordinates ignored the
+    // RootGrid translation, true window positioning and noncentral buttons.
+    auto xamlRoot=frame.XamlRoot();
+    auto visualRoot=xamlRoot ? xamlRoot.Content() : nullptr;
+    if(!visualRoot) {
+        DeleteObject(full);
+        Wh_Log(L"[ATB] Overhang region refused: missing XAML root");
+        AtbRestoreNativeOverhang();
+        return;
+    }
+    const double scale=a.dpiScale;
+    for(auto const& icon:ctx.icons) {
+        auto element=icon.element.get();
+        if(!element)continue;
+        try {
+            if(!(element.ActualWidth()>0 && element.ActualHeight()>0))continue;
+            auto bounds=element.TransformToVisual(visualRoot).TransformBounds(
+                {0.0f,0.0f,(float)element.ActualWidth(),(float)element.ActualHeight()});
+            if(!std::isfinite(bounds.X)||!std::isfinite(bounds.Y)||
+               !std::isfinite(bounds.Width)||!std::isfinite(bounds.Height))
+                continue;
+            // The XAML root is in view-local DIP; pixel-convert once.
+            const int x0=(int)std::floor((double)bounds.X*scale-3.0);
+            const int x1=(int)std::ceil(((double)bounds.X+bounds.Width)*scale+3.0);
+            const int y0=(int)std::floor((double)bounds.Y*scale-5.0);
+            const int y1=(int)std::ceil(((double)bounds.Y+bounds.Height)*scale+3.0);
+            if(y0>=a.extraPixels || x1<=0 || x0>=width || y1<=0)continue;
+            const int left=std::max(0,x0), top=std::max(0,y0);
+            const int right=std::min(width,x1), bottom=std::min(height,y1);
+            if(left>=right || top>=bottom)continue;
+            HRGN shape=CreateRectRgn(left,top,right,bottom);
+            if(shape) {
+                CombineRgn(full,full,shape,RGN_OR);
+                DeleteObject(shape);
+            }
+        }catch(winrt::hresult_error const& e) {
+            Wh_Log(L"[ATB] Icon transform bounds unavailable: %s",e.message().c_str());
+        }catch(...) {
+            Wh_Log(L"[ATB] Icon transform bounds unavailable");
+        }
+    }
+    if(!AtbSetRegion(full))AtbRestoreNativeOverhang();
+}
+
+bool AtbNativeWorkareaStillPreserved() {
+    auto& a=g_atbOverhang;
+    if(!a.active)return true;
+    MONITORINFO mi{sizeof(mi)};
+    RECT live{};
+    // Monitor geometry and HWND are separate invariants. Windows' shell may
+    // silently clamp the HWND while the mouse is idle and no render callback
+    // runs. The UI dispatcher checks both every 100ms.
+    return IsWindow(a.hwnd) && GetWindowRect(a.hwnd,&live) &&
+           AtbEqualRect(live,a.expected) &&
+           GetMonitorInfoW(
+            MonitorFromWindow(a.hwnd,MONITOR_DEFAULTTONEAREST),&mi) &&
+           AtbEqualRect(mi.rcWork,a.baselineWork);
+}
+
+// UI-thread heartbeat: unlike pointer/render-only callbacks, this continues
+// to fire while the cursor is idle. It prevents an expired trial from leaving
+// static scaled transforms behind after the rendering loop has stopped.
+// XAML property writes must remain on the owning dispatcher thread.
+winrt::Windows::UI::Xaml::DispatcherTimer g_trialDispatcherTimer{nullptr};
+winrt::event_token g_trialTimerToken{};
+bool g_trialTimerSubscribed = false;
+
 
 // Prototypes
 void LoadSettings();
@@ -838,21 +1601,6 @@ static bool ShouldAnimateElement(FrameworkElement const& e) {
     return true;
 }
 
-static void ResetElementTransforms(FrameworkElement const& element) {
-    auto tg = element.RenderTransform().try_as<TransformGroup>();
-    if (!tg || tg.Children().Size() < 4) return;
-
-    auto waveScale = tg.Children().GetAt(0).try_as<ScaleTransform>();
-    auto waveTranslate = tg.Children().GetAt(1).try_as<TranslateTransform>();
-    auto bounceScale = tg.Children().GetAt(2).try_as<ScaleTransform>();
-    auto bounceTranslate = tg.Children().GetAt(3).try_as<TranslateTransform>();
-
-    if (waveScale) { waveScale.ScaleX(1.0); waveScale.ScaleY(1.0); }
-    if (waveTranslate) { waveTranslate.X(0.0); }
-    if (bounceScale) { bounceScale.ScaleX(1.0); bounceScale.ScaleY(1.0); }
-    if (bounceTranslate) { bounceTranslate.Y(0.0); }
-}
-
 static bool RebaseIconGeometryFast(DockAnimationContext& ctx) {
     auto frame = ctx.taskbarFrame.get();
     if (!frame) return false;
@@ -1073,6 +1821,7 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
                 }
             }
 
+            AtbEnsurePip(element);
             newIcons.push_back(info);
         } catch (winrt::hresult_error const& e) {
             Wh_Log(L"DockAnimation: HRESULT error in SetupAndAddElement: %s", e.message().c_str());
@@ -1231,6 +1980,40 @@ void RefreshIconPositions(DockAnimationContext& ctx) {
 
 void InitializeAnimationHooks(void* pThis, FrameworkElement const& taskbarFrame) {
     try {
+        // Primary monitor only. No other monitor/taskbar is moved.
+        if(g_settings.enableNativeOverhang && !g_atbOverhang.active)
+            AtbStartNativeOverhang(taskbarFrame);
+        if (!g_trialDispatcherTimer) {
+            g_trialDispatcherTimer = winrt::Windows::UI::Xaml::DispatcherTimer();
+            g_trialDispatcherTimer.Interval(std::chrono::milliseconds(100));
+            g_trialTimerToken = g_trialDispatcherTimer.Tick(
+                [](auto const&, auto const&) {
+                    if (atb_trial::Check()) {
+                        if(g_atbOverhang.active &&
+                           !AtbNativeWorkareaStillPreserved()) {
+                            Wh_Log(L"[ATB] Workarea or taskbar rectangle changed; immediately rolling back overhang");
+                            AtbRestoreNativeOverhang();
+                            g_settings.enableNativeOverhang=false;
+                        }
+                        AtbUpdatePips();
+                        return;
+                    }
+                    g_isMouseInside = false;
+                    g_isBouncing = false;
+                    g_animationIntensity = 0.0;
+                    if (g_isRenderingHooked.exchange(false)) {
+                        Media::CompositionTarget::Rendering(g_renderingToken);
+                    }
+                    AtbRestoreAll();
+                    AtbRestoreNativeOverhang();
+                    g_contexts.clear();
+                    g_activeContextKey = nullptr;
+                    if (g_trialDispatcherTimer) g_trialDispatcherTimer.Stop();
+                    Wh_Log(L"[ATB] UI-thread trial expired/revoked and transforms restored");
+                });
+            g_trialTimerSubscribed = true;
+            g_trialDispatcherTimer.Start();
+        }
         DockAnimationContext ctx;
         ctx.taskbarFrame = taskbarFrame;
         ctx.isInitialized = false;
@@ -1256,6 +2039,7 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             if (g_isRenderingHooked.exchange(false))
                 Media::CompositionTarget::Rendering(g_renderingToken);
             AtbRestoreAll();
+            AtbRestoreNativeOverhang();
             g_contexts.clear();
             g_activeContextKey = nullptr;
             return;
@@ -1304,6 +2088,12 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             ResetAllIconScales(ctx.icons);
             ctx.isInitialized = false;
             ctx.icons.clear();
+            // The native HWND may remain extended until the lease expires,
+            // but empty overhang must never capture clicks after focus-out.
+            if(g_atbOverhang.active) {
+                HRGN bottomOnly=AtbMakeBottomRegion();
+                AtbSetRegion(bottomOnly);
+            }
 
             g_activeContextKey = nullptr;
             g_lastMouseX = -1.0;
@@ -1381,6 +2171,7 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
         if (mouseX == -1.0) mouseX = 0.0;
 
         ApplyAnimation(mouseX, ctx, currentIntensity, dtSec);
+        AtbUpdateNativeOverhangRegion(ctx);
     } catch (...) {
         if (g_isRenderingHooked.exchange(false)) {
             Media::CompositionTarget::Rendering(g_renderingToken);
@@ -1413,6 +2204,19 @@ int WINAPI TaskbarFrame_OnPointerMoved_Hook(void* pThis, void* pArgs) {
     if (g_contexts.find(pThis) == g_contexts.end()) {
         InitializeAnimationHooks(pThis, element);
         Wh_Log(L"DockAnimation: Initialized via OnPointerMoved (%s)", className.c_str());
+    }
+    // The first event can arrive before native XAML has settled after
+    // SetWindowPos. Do not make a single failed layout probe permanent:
+    // retry at most once every 700 ms during the bounded active lease.
+    // Never retry after the deadline or on a context/window mismatch.
+    if(g_settings.enableNativeOverhang && !g_atbOverhang.active &&
+       atb_trial::geometry.valid) {
+        static ULONGLONG lastAttemptTick=0;
+        const ULONGLONG tick=GetTickCount64();
+        if(tick-lastAttemptTick>=700) {
+            lastAttemptTick=tick;
+            AtbStartNativeOverhang(element);
+        }
     }
     // Forward event to existing logic
     OnTaskbarPointerMoved(pThis, args);
@@ -1472,6 +2276,8 @@ void LoadSettings() {
     if (g_settings.lerpSpeed > 60) g_settings.lerpSpeed = 60;
 
     g_settings.disableBounce = (bool)Wh_GetIntSetting(L"DisableBounce");
+    g_settings.enableNativeOverhang =
+        (bool)Wh_GetIntSetting(L"EnableNativeOverhang");
 
     Wh_Log(L"DockAnimation: Settings loaded.");
 }
@@ -1485,6 +2291,23 @@ HMODULE GetTaskbarViewModuleHandle() {
 bool HookTaskbarViewDllSymbols(HMODULE module) {
     // Taskbar.View.dll
     WindhawkUtils::SYMBOL_HOOK taskbarViewHooks[] = {
+        {
+            {
+                LR"(struct winrt::Taskbar::TaskListGroupViewModel __cdecl TryGetItemFromContainer<struct winrt::Taskbar::TaskListGroupViewModel>(struct winrt::Windows::UI::Xaml::UIElement const &))",
+            },
+            &g_atbGetGroupFromButton,
+            nullptr,
+            true,
+        },
+        {
+            {
+                LR"(public: virtual int __cdecl winrt::impl::produce<struct winrt::Taskbar::implementation::TaskListGroupViewModel,struct winrt::Taskbar::ITaskListGroupViewModel>::get_ViewModelCount(unsigned int *))",
+            },
+            &g_atbGetGroupCount,
+            nullptr,
+            true,
+        },
+
         {
             {
                 LR"(public: virtual int __cdecl winrt::impl::produce<struct winrt::Taskbar::implementation::TaskbarFrame,struct winrt::Windows::UI::Xaml::Controls::IControlOverrides>::OnPointerMoved(void *))"
@@ -1532,6 +2355,16 @@ HMODULE WINAPI LoadLibraryExW_Hook(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dw
 
 // Windhawk entry points
 BOOL Wh_ModInit() {
+    // OCT 30 2026 SAFETY HOLD: On the user's real Windows 11 taskbar,
+    // HWND extension + SetWindowRgn produced disappearing app icons.
+    // The actual taskbar did not recover on unload/watchdog expiry;
+    // the user manually restarted Explorer to recover it.
+    // There is NO acceptable real-device recovery guarantee yet.
+    // Do not run animations, touch XAML, or install ANY native hooks.
+    Wh_Log(L"[ATB] SAFETY HOLD: native developer trial is disabled after real taskbar corruption; no hooks installed");
+    return FALSE;
+    // Disabled legacy candidate preserved below for offline analysis only.
+    // Reenabling requires an independently reviewed recovery design.
     Wh_Log(L"[ATB] Developer trial module initialized (no styling changes yet)");
     if (!atb_trial::Arm()) {
         Wh_Log(L"[ATB] FAIL CLOSED: no fresh watcher lease for this Explorer PID");
@@ -1608,49 +2441,73 @@ bool RunFromWindowThread(HWND hWnd,
     RUN_FROM_WINDOW_THREAD_PARAM param;
     param.proc = proc;
     param.procParam = procParam;
-    SendMessage(hWnd, runFromWindowThreadRegisteredMsg, 0, (LPARAM)&param);
+    // A hung Explorer taskbar thread must not permanently block Windhawk
+    // unload or the independent recovery process. The hook is uninstalled
+    // before the stack-owned parameter goes out of scope.
+    DWORD_PTR sendResult = 0;
+    LRESULT dispatched = SendMessageTimeoutW(
+        hWnd, runFromWindowThreadRegisteredMsg, 0, (LPARAM)&param,
+        SMTO_ABORTIFHUNG | SMTO_BLOCK, 1500, &sendResult);
 
     UnhookWindowsHookEx(hook);
+    if (!dispatched) {
+        Wh_Log(L"[ATB] Taskbar thread dispatch timed out; XAML restoration unverified");
+        return false;
+    }
     return true;
 }
 
-void Wh_ModBeforeUninit() {
-    Wh_Log(L"DockAnimation: Wh_ModBeforeUninit (safe cleanup)");
+void AtbStopUiCallbacks() {
+    // Called only on owning Windows taskbar XAML thread.
+    if (g_isRenderingHooked.exchange(false)) {
+        Media::CompositionTarget::Rendering(g_renderingToken);
+    }
+    if (g_trialDispatcherTimer) {
+        g_trialDispatcherTimer.Stop();
+        if (g_trialTimerSubscribed) {
+            g_trialDispatcherTimer.Tick(g_trialTimerToken);
+            g_trialTimerSubscribed = false;
+        }
+        g_trialDispatcherTimer = nullptr;
+    }
+}
 
+void Wh_ModBeforeUninit() {
+    Wh_Log(L"[ATB] Wh_ModBeforeUninit: clean up on the taskbar UI thread");
+    atb_trial::armed = false; // stop native callbacks from mutating UI
     g_activeContextKey = nullptr;
     g_isBouncing = false;
     g_isMouseInside = false;
     g_animationIntensity = 0.0;
 
-    try {
-        if (g_isRenderingHooked.exchange(false)) {
-            Media::CompositionTarget::Rendering(g_renderingToken);
-            Wh_Log(L"DockAnimation: Unhooked CompositionTarget::Rendering.");
-        }
-    }
-    catch (winrt::hresult_error const& e) {
-        Wh_Log(L"DockAnimation: HRESULT error unhooking rendering: %s",
-               e.message().c_str());
-    }
-
-    HWND hTaskbar = FindWindow(L"Shell_TrayWnd", NULL);
+    HWND hTaskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
     if (hTaskbar) {
-        RunFromWindowThread(
+        bool cleaned = RunFromWindowThread(
             hTaskbar,
             [](PVOID) {
                 try {
+                    AtbStopUiCallbacks();
                     AtbRestoreAll();
+                    AtbRestoreNativeOverhang();
                     g_contexts.clear();
-                    Wh_Log(L"DockAnimation: UI contexts cleaned up.");
+                    Wh_Log(L"[ATB] Native transforms, pips and UI handlers restored");
+                } catch (winrt::hresult_error const& e) {
+                    Wh_Log(L"[ATB] XAML cleanup HRESULT: %s", e.message().c_str());
+                } catch (...) {
+                    Wh_Log(L"[ATB] Exception while restoring native XAML state");
                 }
-                catch (...) {}
             },
             nullptr);
-    }
-    else {
-        // No live XAML context exists to restore on its owner thread.
+        if (!cleaned) {
+            Wh_Log(L"[ATB] WARNING: taskbar thread not reachable during unload; UI callbacks may persist");
+        }
+    } else {
+        // Only discard references; never invoke XAML COM methods on the wrong
+        // thread when Explorer has already destroyed the taskbar window.
         g_atbTransformSnapshots.clear();
+        g_atbPips.clear();
         g_contexts.clear();
+        Wh_Log(L"[ATB] Taskbar window missing; dropped dead XAML references");
     }
     g_taskbarViewDllLoaded = false;
     g_hooksApplied = false;
@@ -1666,13 +2523,15 @@ void Wh_ModSettingsChanged() {
             hTaskbar,
             [](PVOID) {
                 try {
-                    for (auto& pair : g_contexts) {
-                        auto& ctx = pair.second;
-                        ResetAllIconScales(ctx.icons);
-                        ctx.isInitialized = false;
-                        ctx.icons.clear();
-                    }
+                    // Settings updates should not leave stale ownership or
+                    // custom pip layers on recycled taskbar buttons.
+                    AtbRestoreAll();
+                    AtbRestoreNativeOverhang();
+                    g_contexts.clear();
+                    g_activeContextKey = nullptr;
                     g_isBouncing = false;
+                    g_isMouseInside = false;
+                    g_animationIntensity = 0.0;
                 } catch (...) {}
             },
             nullptr);

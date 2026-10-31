@@ -1,0 +1,227 @@
+name: Native visual engine — GitHub-only validation
+
+on:
+  push:
+    branches:
+      - feature/full-native-mod-integration-v1
+  pull_request:
+    paths:
+      - 'experiments/**'
+      - 'tests/**'
+      - '.github/workflows/native-visual-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-motion:
+    name: Portable animation math (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and execute original motion tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/dock_motion_tests.cpp -o /tmp/dock-motion-tests
+          /tmp/dock-motion-tests
+      - name: Compile and execute native two-pass spacing tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/native_two_pass_geometry_tests.cpp -o /tmp/native-spacing-tests
+          /tmp/native-spacing-tests
+      - name: Test reserved strip and visual hit-region geometry
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -pedantic -O2 tests/test_taskbar_regions.cpp -o /tmp/atb-region-tests
+          /tmp/atb-region-tests
+      - name: Static guard for development-only native mod
+        run: python3 tests/test_native_mod_contract.py
+
+  windows-safety-fixture:
+    name: Windows mock watchdog and motion fixtures
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run collision geometry tests
+        shell: pwsh
+        run: |
+          clang++ -std=c++17 -O2 tests/native_two_pass_geometry_tests.cpp -o "$env:RUNNER_TEMP/native-spacing.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Geometry compilation failed' }
+          & "$env:RUNNER_TEMP/native-spacing.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Geometry test failed' }
+      - name: Compile and execute disposable owned-HWND appbar/window height probe
+        shell: pwsh
+        run: |
+          & clang++ -std=c++17 -O2 tests/win32_disposable_appbar.cpp -o "$env:RUNNER_TEMP/atb-owned-appbar.exe" -lshell32 -luser32 -lgdi32
+          if ($LASTEXITCODE -ne 0) { throw 'Owned appbar probe compilation failed' }
+          & "$env:RUNNER_TEMP/atb-owned-appbar.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Owned appbar probe failed' }
+      - name: Disposable REAL Explorer HWND overhang probe with independent watchdog
+        shell: pwsh
+        run: |
+          & clang++ -std=c++17 -O2 -municode tests/win32_ci_native_taskbar_overhang.cpp -o "$env:RUNNER_TEMP/atb-ci-native-probe.exe" -luser32
+          if ($LASTEXITCODE -ne 0) { throw 'Native geometry probe compiler error' }
+          $oldCI = $env:GITHUB_ACTIONS
+          $env:GITHUB_ACTIONS = 'false'
+          & "$env:RUNNER_TEMP/atb-ci-native-probe.exe"
+          if ($LASTEXITCODE -ne 2) { throw 'CI-only refusal gate failed' }
+          $env:GITHUB_ACTIONS = $oldCI
+          & "$env:RUNNER_TEMP/atb-ci-native-probe.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Native geometry/watchdog probe failed' }
+          & "$env:RUNNER_TEMP/atb-ci-native-probe.exe" --crash-test
+          if ($LASTEXITCODE -ne 0) { throw 'Independent watchdog failed to restore after crash injection' }
+      - name: Parse watchdog PowerShell without executing outside fixture
+        shell: pwsh
+        run: |
+          $t = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Join-Path (Get-Location) 'experiments/run-visual-trial-watchdog.ps1'),
+            [ref]$t, [ref]$errors
+          )
+          if ($errors.Count -ne 0) { throw ($errors | Out-String) }
+      - name: Run isolated mock watchdog (never targets Explorer)
+        shell: pwsh
+        run: |
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File experiments/run-visual-trial-watchdog.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'Self-test failed' }
+          $fixtures = @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'atb-dev-selftest-*' -ErrorAction SilentlyContinue)
+          if ($fixtures.Count -ne 1) { throw "Expected one self-test fixture; found $($fixtures.Count)" }
+          $last = Get-Content -LiteralPath (Join-Path $fixtures[0].FullName 'lease.v1') -Raw
+          if ($last.Trim() -ne 'REVOKED') { throw 'Self-test lease not revoked' }
+          if (Test-Path (Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial/lease.v1')) {
+            throw 'Self-test improperly created a real trial lease'
+          }
+      - name: Verify unprivileged, read-only Windhawk preflight (CI registry fixture)
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File tests/test_windhawk_17_disarm.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Unprivileged read-only preflight fixtures failed' }
+      - name: Reject live ATB3 watchdog before any HWND or lease access (SAFETY HOLD)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          # Execute ONLY to verify the intentionally immediate fail-closed
+          # guard. No Explorer/window/registry APIs may be touched.
+          $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) { throw 'SAFETY FAILURE: live trial did not refuse to run' }
+          if (-not $output.Contains('SAFETY HOLD: live taskbar trial disabled')) {
+            throw "SAFETY FAILURE: unexpected watchdog error: $output"
+          }
+          Write-Host 'PASS: real taskbar trial refuses to arm before loading Win32 helper'
+          # The nonzero child exit code is EXPECTED. Reset native exit state so
+          # the successful safety assertion itself is not marked a failed job.
+          $global:LASTEXITCODE = 0
+      - name: Run isolated ATB3 independent geometry lease self-test
+        shell: pwsh
+        run: |
+          $path = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
+          if ($errors.Count) { throw ($errors | Out-String) }
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw 'ATB3 isolated geometry lease test failed' }
+          $fixtures = @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'atb-native-overhang-selftest-*')
+          if ($fixtures.Count -ne 1) { throw "ATB3 fixture count $($fixtures.Count)" }
+          $lease = (Get-Content -LiteralPath (Join-Path $fixtures[0].FullName 'lease.v1') -Raw).Trim()
+          if ($lease -ne 'REVOKED') { throw "ATB3 was not revoked" }
+      - name: Refuse rearm after simulated watchdog crash (isolated)
+        shell: pwsh
+        run: |
+          $path = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest -TestUnresolved
+          if ($LASTEXITCODE -eq 0) {
+            throw 'SAFETY REGRESSION: unresolved watchdog journal unexpectedly rearmed'
+          }
+          Write-Host 'PASS: unresolved prior ATB3 lease refuses rearm'
+          $global:LASTEXITCODE = 0
+      - name: Re-enter ATB3 watchdog twice in same Windows PowerShell 5.1 process
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Simulate the old ATB2 class already loaded in an interactive shell.
+          Add-Type -TypeDefinition 'public static class AtbGeoWin32 {}'
+          $watcher = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          & $watcher -SelfTest
+          if (-not $?) { throw 'First same-host ATB3 self-test failed' }
+          # The self-test bypasses real Shell_TrayWnd snapshot and recovery.
+          # Instantiate every nested type used by the production code path.
+          $rect = New-Object AtbGeoWin32_ATB3_R1+RECT
+          $info = New-Object AtbGeoWin32_ATB3_R1+MONITORINFO
+          if ($rect -isnot [AtbGeoWin32_ATB3_R1+RECT]) { throw 'RECT constructor failed' }
+          if ($info -isnot [AtbGeoWin32_ATB3_R1+MONITORINFO]) { throw 'MONITORINFO constructor failed' }
+          $rect.Left = 17
+          $info.cbSize = [uint32][Runtime.InteropServices.Marshal]::SizeOf([type][AtbGeoWin32_ATB3_R1+MONITORINFO])
+          if ($rect.Left -ne 17 -or $info.cbSize -le 0) { throw 'Win32 nested struct fields inaccessible' }
+          & $watcher -SelfTest
+          if (-not $?) { throw 'Second same-host ATB3 self-test failed' }
+          Write-Host 'PASS: ATB3 same-shell reentry and real-mode nested Win32 constructors'
+      - name: Instantiate native watchdog Win32 structs in PowerShell 7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $watcher = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          Add-Type -TypeDefinition 'public static class AtbGeoWin32 {}'
+          & $watcher -SelfTest
+          if (-not $?) { throw 'PowerShell 7 ATB3 self-test failed' }
+          $rect = New-Object AtbGeoWin32_ATB3_R1+RECT
+          $info = New-Object AtbGeoWin32_ATB3_R1+MONITORINFO
+          if ($rect -isnot [AtbGeoWin32_ATB3_R1+RECT]) { throw 'PowerShell 7 RECT failed' }
+          if ($info -isnot [AtbGeoWin32_ATB3_R1+MONITORINFO]) { throw 'PowerShell 7 MONITORINFO failed' }
+          Write-Host 'PASS: PowerShell 7 production nested Win32 types resolve'
+      - name: Validate native source guard contract
+        shell: pwsh
+        run: python tests/test_native_mod_contract.py
+
+  windhawk-compiler:
+    name: Windhawk 1.7.3 official Clang DLL compilation
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache verified official Windhawk compiler
+        uses: actions/cache@v4
+        id: windhawk-cache
+        with:
+          path: ${{ runner.temp }}/windhawk
+          key: windhawk-portable-1.7.3-compiler-v1
+      - name: Download pinned Windhawk installer and extract portable tools
+        if: steps.windhawk-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="${{ runner.temp }}/windhawk_setup.exe"
+          curl --fail --location --retry 3 'https://github.com/ramensoftware/windhawk/releases/download/v1.7.3/windhawk_setup.exe' -o "$installer"
+          printf '%s  %s\n' '5116cc1703384aac88b8d7a3b57f172aea5da32b6df7355fb2f8247d23813c8f' "$installer" | sha256sum -c -
+          MSYS_NO_PATHCONV=1 "$installer" /S /PORTABLE "/D=${{ runner.temp }}\\windhawk"
+      - name: Compile and link the native mod without loading it
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'windhawk'
+          $compiler = Join-Path $base 'Compiler/bin/clang++.exe'
+          $flags = Join-Path $base 'Compiler/compile_flags.txt'
+          $headers = Join-Path $base 'Compiler/include'
+          if (-not (Test-Path $compiler)) { throw "Windhawk compiler extraction incomplete: $compiler" }
+          if (-not (Test-Path $flags)) { throw "Windhawk flags missing" }
+          $source = Join-Path (Get-Location) 'experiments/atb-native-visual-trial.wh.cpp'
+          $output = Join-Path $env:RUNNER_TEMP 'atb-native-trial.dll'
+          & $compiler "@$flags" "-I$headers" -Werror=unused-function -Werror=unused-variable -shared -o $output $source -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32 -lgdi32
+          if ($LASTEXITCODE -ne 0) { throw "Native Windhawk build failed" }
+          if (-not (Test-Path $output)) { throw "Compiled DLL missing" }
+          $hash = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
+          Write-Host "WINDSHA256=$hash"
+          Write-Host "DLL compiled for isolated GitHub CI only; never installed or run."
+      - name: Archive reviewed source only (no binary installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: atb-native-preview-source
+          retention-days: 7
+          path: |
+            experiments/atb-native-visual-trial.wh.cpp
+            experiments/run-native-overhang-trial.ps1
+            experiments/windhawk-17-own-mod-disarm.ps1
+            experiments/THIRD_PARTY_NOTICES.md
+            experiments/LICENSE
+            docs/NATIVE_DEVELOPER_CANDIDATE.md

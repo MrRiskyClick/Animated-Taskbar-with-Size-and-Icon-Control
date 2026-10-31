@@ -55,6 +55,26 @@ Use absolute journal status transitions with durable writes. Non-reentrant rollb
 - No unapproved scheduled startup task/service and no permanent registry patch.
 - If unable to reliably stop reapplication, **do not ship active shell mutation**. Manual Windhawk disable/restart is only an emergency instruction, not a substitute for the 120s safeguard.
 
+## Manual-only recovery policy (user confirmed October 30, 2026)
+
+The user has explicitly selected **manual Explorer restart/reboot** as the
+only permissible process-level recovery escalation. The watchdog must never
+call a process termination/restart command or reboot Windows. If an
+unresponsive Explorer refuses async geometry restoration, record the
+failure, revoke the PID-bound lease to block the mod at its next process load,
+and permit the user to restart Explorer or reboot on their own terms.
+
+After a manual restart/reboot, all approved taskbar mutations must be
+transient XAML or HWND state. Only the revoked/unresolved per-user lease file may remain. Windhawk's existing Enabled setting must not be changed by the watchdog; it can remain on but the mod must reject expired leases.
+No taskbar auto-hide, height preference, appbar registration, grouping,
+tray or other Windhawk mod settings may be persisted.
+
+The new source restrictions and disposable GitHub Windows tests cover
+the intended mutation scope and fresh-process own-mod disable persistence.
+These tests are not a universal proof that arbitrary Windows/third-party
+faults cannot cause damage. Details:
+[MANUAL_RESTART_RECOVERY.md](MANUAL_RESTART_RECOVERY.md).
+
 ## Stage 0 status
 
 Only a **non-mutating diagnostic prototype** and simulated rollback unit tests may ship at this point. They are explicitly not a production watchdog or comprehensive Windows savestate.
