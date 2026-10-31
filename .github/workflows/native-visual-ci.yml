@@ -97,7 +97,7 @@ jobs:
         run: |
           pwsh -NoProfile -File tests/test_windhawk_17_disarm.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Unprivileged read-only preflight fixtures failed' }
-      - name: Run isolated ATB2 independent geometry lease self-test
+      - name: Run isolated ATB3 independent geometry lease self-test
         shell: pwsh
         run: |
           $path = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
@@ -106,11 +106,11 @@ jobs:
           [void][System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
           if ($errors.Count) { throw ($errors | Out-String) }
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
-          if ($LASTEXITCODE -ne 0) { throw 'ATB2 isolated geometry lease test failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'ATB3 isolated geometry lease test failed' }
           $fixtures = @(Get-ChildItem -Path $env:TEMP -Directory -Filter 'atb-native-overhang-selftest-*')
-          if ($fixtures.Count -ne 1) { throw "ATB2 fixture count $($fixtures.Count)" }
+          if ($fixtures.Count -ne 1) { throw "ATB3 fixture count $($fixtures.Count)" }
           $lease = (Get-Content -LiteralPath (Join-Path $fixtures[0].FullName 'lease.v1') -Raw).Trim()
-          if ($lease -ne 'REVOKED') { throw "ATB2 was not revoked" }
+          if ($lease -ne 'REVOKED') { throw "ATB3 was not revoked" }
       - name: Refuse rearm after simulated watchdog crash (isolated)
         shell: pwsh
         run: |
@@ -119,7 +119,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             throw 'SAFETY REGRESSION: unresolved watchdog journal unexpectedly rearmed'
           }
-          Write-Host 'PASS: unresolved prior ATB2 lease refuses rearm'
+          Write-Host 'PASS: unresolved prior ATB3 lease refuses rearm'
           $global:LASTEXITCODE = 0
       - name: Validate native source guard contract
         shell: pwsh
