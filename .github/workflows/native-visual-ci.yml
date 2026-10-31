@@ -49,6 +49,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Geometry compilation failed' }
           & "$env:RUNNER_TEMP/native-spacing.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Geometry test failed' }
+      - name: Compile and test independent native overflow surface (NO Explorer taskbar modifications)
+        shell: pwsh
+        run: |
+          & clang++ -std=c++17 -Wall -Wextra -Werror -O2 tests/win32_overflow_surface_fixture.cpp -o "$env:RUNNER_TEMP/atb-overflow-fixture.exe" -luser32 -lgdi32
+          if ($LASTEXITCODE -ne 0) { throw 'Overflow surface fixture compilation failed' }
+          & "$env:RUNNER_TEMP/atb-overflow-fixture.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable overlay test failed' }
       - name: Compile and execute disposable owned-HWND appbar/window height probe
         shell: pwsh
         run: |
