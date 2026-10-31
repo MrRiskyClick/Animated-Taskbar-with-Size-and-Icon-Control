@@ -142,6 +142,19 @@ jobs:
           & $watcher -SelfTest
           if (-not $?) { throw 'Second same-host ATB3 self-test failed' }
           Write-Host 'PASS: ATB3 same-shell reentry and real-mode nested Win32 constructors'
+      - name: Instantiate native watchdog Win32 structs in PowerShell 7
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $watcher = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          Add-Type -TypeDefinition 'public static class AtbGeoWin32 {}'
+          & $watcher -SelfTest
+          if (-not $?) { throw 'PowerShell 7 ATB3 self-test failed' }
+          $rect = New-Object AtbGeoWin32_ATB3_R1+RECT
+          $info = New-Object AtbGeoWin32_ATB3_R1+MONITORINFO
+          if ($rect -isnot [AtbGeoWin32_ATB3_R1+RECT]) { throw 'PowerShell 7 RECT failed' }
+          if ($info -isnot [AtbGeoWin32_ATB3_R1+MONITORINFO]) { throw 'PowerShell 7 MONITORINFO failed' }
+          Write-Host 'PASS: PowerShell 7 production nested Win32 types resolve'
       - name: Validate native source guard contract
         shell: pwsh
         run: python tests/test_native_mod_contract.py
