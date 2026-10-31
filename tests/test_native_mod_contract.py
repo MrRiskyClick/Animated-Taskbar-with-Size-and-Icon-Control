@@ -165,6 +165,14 @@ class NativeContract(unittest.TestCase):
         self.assertIn('[AtbGeoWin32_ATB3_R1]::', watcher)
         self.assertNotIn('public static class AtbGeoWin32 {', watcher)
         self.assertNotIn('[AtbGeoWin32]::', watcher)
+        # This regression previously passed CI: -SelfTest never reaches the
+        # live taskbar snapshot where New-Object constructs nested Win32 types.
+        # Verify ALL constructor call sites, not just static method calls.
+        self.assertNotIn('New-Object AtbGeoWin32+RECT', watcher)
+        self.assertNotIn('New-Object AtbGeoWin32+MONITORINFO', watcher)
+        self.assertEqual(watcher.count('New-Object AtbGeoWin32_ATB3_R1+RECT'), 4)
+        self.assertIn('New-Object AtbGeoWin32_ATB3_R1+MONITORINFO', watcher)
+
         workflow = (ROOT / '.github/workflows/native-visual-ci.yml').read_text(encoding='utf-8')
         self.assertIn('Re-enter ATB3 watchdog twice in same Windows PowerShell 5.1 process', workflow)
         self.assertIn('Add-Type -TypeDefinition', workflow)
