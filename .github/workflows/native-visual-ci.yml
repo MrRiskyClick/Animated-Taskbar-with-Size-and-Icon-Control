@@ -97,6 +97,19 @@ jobs:
         run: |
           pwsh -NoProfile -File tests/test_windhawk_17_disarm.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Unprivileged read-only preflight fixtures failed' }
+      - name: Reject live ATB3 watchdog before any HWND or lease access (SAFETY HOLD)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path (Get-Location) 'experiments/run-native-overhang-trial.ps1'
+          # Execute ONLY to verify the intentionally immediate fail-closed
+          # guard. No Explorer/window/registry APIs may be touched.
+          $output = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) { throw 'SAFETY FAILURE: live trial did not refuse to run' }
+          if (-not $output.Contains('SAFETY HOLD: live taskbar trial disabled')) {
+            throw "SAFETY FAILURE: unexpected watchdog error: $output"
+          }
+          Write-Host 'PASS: real taskbar trial refuses to arm before loading Win32 helper'
       - name: Run isolated ATB3 independent geometry lease self-test
         shell: pwsh
         run: |
