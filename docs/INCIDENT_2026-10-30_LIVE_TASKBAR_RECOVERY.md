@@ -61,6 +61,21 @@ This design flaw follows directly from the source. It is consistent with
 the screenshot and logs, though the exact region geometry at the moment
 of failure was not captured. **It cannot be considered safe rollback.**
 
+There are two further independent fail-open recovery gaps in this candidate:
+- `AtbRestoreNativeOverhang()` restores the original HWND rectangle only
+  if its current rectangle still equals the precise *expanded* target.
+  The timer was triggered because that target or the monitor work area
+  had already changed. The rollback can therefore skip actual rectangle
+  restoration on the very failure path meant to invoke it.
+- The independent PowerShell `Stop-NativeTrial()` returns early when the
+  current HWND rectangle matches neither its original nor its expanded
+  rectangle, *before even checking whether its own region marker survives*.
+  This does not make geometry and region independently recoverable.
+
+Both fail-closed choices avoid overwriting an intervening component's
+changes, but this means they are conflict detectors—not a guaranteed
+inverse transaction. The fallback cannot be called automatic recovery.
+
 Microsoft documents that `SetWindowRgn` determines the area in which a
 window may draw and emits `WM_WINDOWPOSCHANGING` /
 `WM_WINDOWPOSCHANGED`. Calling it on Explorer's native
