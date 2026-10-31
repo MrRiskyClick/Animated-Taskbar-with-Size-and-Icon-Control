@@ -10,6 +10,26 @@ MOD = (ROOT / 'experiments' / 'atb-native-visual-trial.wh.cpp').read_text(encodi
 WATCHER = (ROOT / 'experiments' / 'run-visual-trial-watchdog.ps1').read_text(encoding='utf-8')
 
 class NativeContract(unittest.TestCase):
+    def test_emergency_safety_hold_blocks_live_shell_mutations(self):
+        # On October 30 the user's live Shell_TrayWnd lost its app icons.
+        # The guard MUST precede any lease arming, hook setup, or LoadSettings.
+        start = MOD.index('BOOL Wh_ModInit()')
+        end = MOD.index('void Wh_ModAfterInit()', start)
+        init = MOD[start:end]
+        self.assertIn('SAFETY HOLD: native developer trial is disabled', init)
+        self.assertIn('return FALSE;', init)
+        self.assertLess(init.index('return FALSE;'), init.index('atb_trial::Arm()'))
+        self.assertLess(init.index('return FALSE;'), init.index('HookTaskbarViewDllSymbols('))
+        self.assertLess(init.index('return FALSE;'), init.index('LoadSettings();'))
+        self.assertIn('// @version           0.3.4', MOD)
+        self.assertIn('SAFETY HOLD', MOD[:850])
+        watchdog = (ROOT / 'experiments' / 'run-native-overhang-trial.ps1').read_text(encoding='utf-8')
+        header = watchdog[:watchdog.index(". $disarmModule")]
+        self.assertIn('if (-not $SelfTest) {', header)
+        self.assertIn("SAFETY HOLD: live taskbar trial disabled", header)
+        self.assertLess(header.index("if (-not $SelfTest) {"), header.index("Join-Path $PSScriptRoot"))
+        self.assertNotIn('Geometry trial armed', header)
+
     def test_metadata(self):
         for token in ('// @id              atb-animated-taskbar-trial',
                       '// @include           explorer.exe',
