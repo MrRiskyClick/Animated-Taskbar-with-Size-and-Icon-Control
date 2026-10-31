@@ -32,11 +32,16 @@ try {
         [System.IO.FileMode]::OpenOrCreate,
         [System.IO.FileAccess]::ReadWrite,
         [System.IO.FileShare]::None)
-    $hwnd = [AtbWin32]::FindWindow('Shell_TrayWnd', $null)
-    if ($hwnd -eq [IntPtr]::Zero) { throw "Windows primary taskbar not found." }
     [uint32] $explorerPid = 0
-    [void][AtbWin32]::GetWindowThreadProcessId($hwnd, [ref] $explorerPid)
-    if ($explorerPid -eq 0) { throw "Could not read the taskbar Explorer PID." }
+    if ($SelfTest) {
+        # Fully isolated CI test. Never discover or interact with real Explorer.
+        $explorerPid = [uint32]$PID
+    } else {
+        $hwnd = [AtbWin32]::FindWindow('Shell_TrayWnd', $null)
+        if ($hwnd -eq [IntPtr]::Zero) { throw "Windows primary taskbar not found." }
+        [void][AtbWin32]::GetWindowThreadProcessId($hwnd, [ref] $explorerPid)
+        if ($explorerPid -eq 0) { throw "Could not read the taskbar Explorer PID." }
+    }
 
     $startUtc = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $deadlineUtc = $startUtc + $durationMs
@@ -65,13 +70,15 @@ try {
 
     try {
         while ($clock.ElapsedMilliseconds -lt $durationMs) {
-            $currentHwnd = [AtbWin32]::FindWindow('Shell_TrayWnd', $null)
-            [uint32]$currentExplorerPid = 0
-            if ($currentHwnd -eq [IntPtr]::Zero) { break }
-            [void][AtbWin32]::GetWindowThreadProcessId($currentHwnd, [ref] $currentExplorerPid)
-            if ($currentExplorerPid -ne $explorerPid) {
-                Write-Host "[ATB] Explorer changed. Revoking the trial."
-                break
+            if (-not $SelfTest) {
+                $currentHwnd = [AtbWin32]::FindWindow('Shell_TrayWnd', $null)
+                [uint32]$currentExplorerPid = 0
+                if ($currentHwnd -eq [IntPtr]::Zero) { break }
+                [void][AtbWin32]::GetWindowThreadProcessId($currentHwnd, [ref] $currentExplorerPid)
+                if ($currentExplorerPid -ne $explorerPid) {
+                    Write-Host "[ATB] Explorer changed. Revoking the trial."
+                    break
+                }
             }
             $nowUtc = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
             if ($nowUtc -ge $deadlineUtc) { break }

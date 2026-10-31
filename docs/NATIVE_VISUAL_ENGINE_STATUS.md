@@ -26,7 +26,7 @@
 - Unclipped magnified icons beyond the current 42px native HWND.
 - Separate taller visual region with only 42px reserved desktop work area;
   transparent click-through and extended native hit-test are unimplemented.
-- Native number-of-open-windows detection or 0/1/2/3/4+ custom pip rendering.
+- Native group-window lookup and 0/1/2/3/4+ pip **code exists** in the integration branch, but it has not been visually or functionally verified on the user's Windows build. The handling of secondary monitors, taskbar recycling and other pip mods remains unverified.
 - Fully tested compatibility with Taskbar Styler / Height and Icon Size / tray mods.
 - Watchdog **trusted authentication**, code signing, external disable for
   Windhawk 1.x, automatic Explorer restart on frozen UI, boot-time recovery,
@@ -88,3 +88,30 @@ not caught by C++ syntax-check.
 5. User manual visual/interaction acceptance; then Windhawk publication review.
 
 **Do not suggest that the timer itself is a completed independent rollback.**
+
+## GitHub-only integration update — October 30, 2026
+
+On `feature/full-native-mod-integration-v1`:
+- Native pip code uses optional Windows 11 TaskListGroupViewModel symbol lookup
+  and a 0/1/2/3/4+ renderer, restoring the original indicator on cleanup
+  while attempting not to overwrite another mod's intervening style updates.
+- Native XAML dispatcher timer monitors lease loss even when pointer movement
+  stops; UI callbacks and our transforms are detached on its owning thread.
+- `src/core/taskbar_regions.hpp` models visual overhang separately from the
+  original taskbar's desktop reservation, and tests which *future* regions
+  should accept mouse input. **It is not yet connected to Explorer**.
+- GitHub Actions builds and links the mod with a checksum-pinned official
+  Windhawk 1.7.3 compiler, runs portable motion/overhang tests and an isolated
+  mock Windows watchdog test.
+- `docs/NECTAR_ARCHITECTURE_REVIEW.md` records why Nectar's mirrored
+  replacement dock architecture cannot be directly reused for our
+  native-controls requirement.
+- GPLv3/MIT upstream attributions are in `experiments/THIRD_PARTY_NOTICES.md`.
+
+**Release blockers:** independent real watchdog/rollback still incomplete;
+separate unclipped native visual window and hit-testing not implemented; custom
+pip and cross-mod behavior require manual Windows testing. Do NOT describe this
+as a finished full mod or suggest installing on the user's primary PC.
+All development/code changes and automated tests must occur solely through
+GitHub and GitHub Actions, not through remote desktop connectors or any
+commands run remotely on the user's device.
