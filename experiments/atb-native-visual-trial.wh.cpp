@@ -2,7 +2,7 @@
 // @id              atb-animated-taskbar-trial
 // @name              Animated Taskbar Native Hover (Developer Trial)
 // @description       Developer-only native icon magnification with collision-free push-out; guarded by an external expiring test lease.
-// @version           0.3.1
+// @version           0.3.2
 // @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
 // @license           GPL-3.0
 // @github            https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
@@ -331,8 +331,11 @@ struct WindowGeometryLease {
     RECT original{};
     LONG expectedTop = 0;
     DWORD watcherPid = 0;
+    unsigned int baselineRegionMode=0;
+    ULONGLONG baselineRegionHash=0;
 };
 WindowGeometryLease geometry;
+unsigned long long originalUtcDeadline=0;
 
 bool ReadLease(unsigned long long* expires) {
     if (leasePath.empty()) return false;
@@ -350,24 +353,28 @@ bool ReadLease(unsigned long long* expires) {
     WindowGeometryLease observed{};
     char extra=0;
     int fields=0;
-    if (std::strncmp(buffer,"ATB2 ",5)==0) {
-        LONG x0=0,y0=0,x1=0,y1=0,targetTop=0;
-        fields=std::sscanf(buffer,"ATB2 %lu %llu %llu %lu %ld %ld %ld %ld %ld %c",
-                          &explorerPid,&deadline,&heartbeat,&watcherPid,
-                          &x0,&y0,&x1,&y1,&targetTop,&extra);
-        if (fields!=9) return false;
-        if (x1<=x0 || y1-y0<30 || y1-y0>140 ||
-            x1-x0<400 || targetTop>=y0-24 ||
-            targetTop<y0-160 || targetTop>=y1) return false;
-        observed.valid=true;
-        observed.original={x0,y0,x1,y1};
-        observed.expectedTop=targetTop;
-        observed.watcherPid=watcherPid;
-    } else {
-        fields=std::sscanf(buffer,"ATB1 %lu %llu %llu %lu %c",
-                           &explorerPid,&deadline,&heartbeat,&watcherPid,&extra);
-        if(fields!=4) return false;
-    }
+    // ATB3 explicitly pins the original HWND region owned by the watcher.
+    // Older leases cannot authorize modification of pre-existing regions.
+    if(std::strncmp(buffer,"ATB3 ",5)!=0)return false;
+    LONG x0=0,y0=0,x1=0,y1=0,targetTop=0;
+    unsigned int regionMode=0;
+    unsigned long long regionHash=0;
+    fields=std::sscanf(buffer,
+        "ATB3 %lu %llu %llu %lu %ld %ld %ld %ld %ld %u %llu %c",
+        &explorerPid,&deadline,&heartbeat,&watcherPid,
+        &x0,&y0,&x1,&y1,&targetTop,&regionMode,&regionHash,&extra);
+    if(fields!=11 || regionMode>1 ||
+       (regionMode==0 && regionHash!=0) ||
+       (regionMode==1 && regionHash==0))return false;
+    if(x1<=x0 || y1-y0<30 || y1-y0>140 ||
+       x1-x0<400 || targetTop>=y0-24 ||
+       targetTop<y0-160 || targetTop>=y1)return false;
+    observed.valid=true;
+    observed.original={x0,y0,x1,y1};
+    observed.expectedTop=targetTop;
+    observed.watcherPid=watcherPid;
+    observed.baselineRegionMode=regionMode;
+    observed.baselineRegionHash=regionHash;
     if(explorerPid!=GetCurrentProcessId() || !watcherPid ||
        !deadline || !heartbeat) return false;
     const auto now=UtcMillis();
@@ -386,6 +393,9 @@ bool ReadLease(unsigned long long* expires) {
         if(geometry.valid &&
            (geometry.watcherPid!=observed.watcherPid ||
             geometry.expectedTop!=observed.expectedTop ||
+            geometry.baselineRegionMode!=observed.baselineRegionMode ||
+            geometry.baselineRegionHash!=observed.baselineRegionHash ||
+            deadline!=originalUtcDeadline ||
             std::memcmp(&geometry.original,&observed.original,sizeof(RECT))!=0))
             return false;
     } else {
@@ -405,6 +415,7 @@ bool Arm() {
     if (!ReadLease(&expires)) return false;
     auto until = expires - UtcMillis();
     if (until > 120000ULL) return false;
+    originalUtcDeadline=expires;
     deadlineTick = GetTickCount64() + until;
     lastCheckedTick = 0;
     armed = true;
@@ -724,6 +735,8 @@ struct AtbNativeOverhang {
     bool heightOwned=false;
     std::vector<AtbFrameChildSnapshot> shiftedChildren;
     HRGN lastRegion=nullptr; // owned duplicate; never passed to Windows
+    HRGN baseRegion=nullptr; // private pre-trial region copy
+    bool hadBaseRegion=false;
 } g_atbOverhang;
 
 bool AtbEqualRect(RECT a, RECT b) {
@@ -770,6 +783,53 @@ bool AtbIsOurRegion() {
     DeleteObject(actual);
     return ours;
 }
+bool AtbBaselineRegionMatches(HWND hwnd) {
+    HRGN current=CreateRectRgn(0,0,0,0);
+    if(!current)return false;
+    const int kind=GetWindowRgn(hwnd,current);
+    const auto actual=kind==ERROR ? 0 : AtbRegionFingerprint(current);
+    DeleteObject(current);
+    auto const& lease=atb_trial::geometry;
+    return lease.valid && (kind==ERROR ?
+        lease.baselineRegionMode==0 && lease.baselineRegionHash==0 :
+        lease.baselineRegionMode==1 && actual!=0 &&
+        actual==lease.baselineRegionHash);
+}
+HRGN AtbMakeBaselineCopy() {
+    auto const& a=g_atbOverhang;
+    if(!a.hadBaseRegion)return nullptr;
+    HRGN copy=CreateRectRgn(0,0,0,0);
+    if(!copy)return nullptr;
+    if(!a.baseRegion || CombineRgn(copy,a.baseRegion,nullptr,RGN_COPY)==ERROR) {
+        DeleteObject(copy);
+        return nullptr;
+    }
+    return copy;
+}
+bool AtbRestoreBaselineRegion() {
+    auto& a=g_atbOverhang;
+    HRGN original=AtbMakeBaselineCopy();
+    if(a.hadBaseRegion && !original)return false;
+    if(!SetWindowRgn(a.hwnd,original,TRUE)){
+        if(original)DeleteObject(original);
+        return false;
+    }
+    return true; // Window owns original after success.
+}
+HRGN AtbMakeBottomRegion() {
+    auto& a=g_atbOverhang;
+    if(!a.hadBaseRegion)
+        return CreateRectRgn(0,a.extraPixels,
+                     a.expected.right-a.expected.left,
+                     a.expected.bottom-a.expected.top);
+    HRGN region=AtbMakeBaselineCopy();
+    if(!region)return nullptr;
+    if(OffsetRgn(region,0,a.extraPixels)==ERROR) {
+        DeleteObject(region);
+        return nullptr;
+    }
+    return region;
+}
 void AtbRestoreNativeOverhang() {
     auto& a=g_atbOverhang;
     if(!a.active) return;
@@ -802,9 +862,13 @@ void AtbRestoreNativeOverhang() {
                 // fingerprint. If an unrelated mod replaced the region,
                 // never clear or reassign its visual/input geometry.
                 if(AtbIsOurRegion() && AtbOurRegionFingerprintMatches()) {
-                    RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
-                    RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
-                    SetWindowRgn(a.hwnd,nullptr,TRUE);
+                    if(AtbRestoreBaselineRegion()) {
+                        RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+                        RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+                        Wh_Log(L"[ATB] Original taskbar region restored exactly");
+                    }else{
+                        Wh_Log(L"[ATB] Baseline region restore failed; independent watchdog must restore");
+                    }
                 } else {
                     RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
                     RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
@@ -823,6 +887,9 @@ void AtbRestoreNativeOverhang() {
     }
     if(a.lastRegion) DeleteObject(a.lastRegion);
     a.lastRegion=nullptr;
+    if(a.baseRegion) DeleteObject(a.baseRegion);
+    a.baseRegion=nullptr;
+    a.hadBaseRegion=false;
     a.frame=nullptr;
     a.frameOriginal=nullptr;
     a.ours=nullptr;
@@ -871,8 +938,12 @@ bool AtbSetRegion(HRGN next) {
         // was not published, so the watchdog deliberately cannot clear it.
         // Revert synchronously ONLY if our own exact pixel region remains.
         if(AtbIsOurRegion()) {
-            SetWindowRgn(a.hwnd,nullptr,TRUE);
-            RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+            if(AtbRestoreBaselineRegion()) {
+                RemovePropW(a.hwnd,L"ATB_REGION_FINGERPRINT_V2");
+                RemovePropW(a.hwnd,L"ATB_OWNED_OVERHANG_V2");
+            }else{
+                Wh_Log(L"[ATB] Baseline region restore failed; watchdog recovery required");
+            }
         }
         return false;
     }
@@ -899,12 +970,8 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
         return false;
     }
     if(GetPropW(hwnd,L"ATB_OWNED_OVERHANG_V2"))return false;
-    HRGN old=CreateRectRgn(0,0,0,0);
-    if(!old)return false;
-    int nativeRegion=GetWindowRgn(hwnd,old);
-    DeleteObject(old);
-    if(nativeRegion!=ERROR) {
-        Wh_Log(L"[ATB] Overhang refused: native HWND already has a region; preserving foreign component");
+    if(!AtbBaselineRegionMatches(hwnd)) {
+        Wh_Log(L"[ATB] Overhang refused: native HWND region differs from ATB3 watchdog snapshot");
         return false;
     }
     MONITORINFO mi{sizeof(mi)};
@@ -937,12 +1004,33 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     a.dpiScale=(double)GetDpiForWindow(hwnd)/96.0;
     if(a.dpiScale<=0 || a.dpiScale>5.0) return false;
     a.extraPixels=extra;
+    HRGN baseline=CreateRectRgn(0,0,0,0);
+    if(!baseline)return false;
+    const int regionKind=GetWindowRgn(hwnd,baseline);
+    if(regionKind==ERROR) {
+        DeleteObject(baseline);
+        baseline=nullptr;
+    }
+    // Race guard: re-read against the watcher baseline just before mutating.
+    if(!AtbBaselineRegionMatches(hwnd)){
+        if(baseline)DeleteObject(baseline);
+        Wh_Log(L"[ATB] Overhang refused: region changed during start");
+        return false;
+    }
+    a.hadBaseRegion=(regionKind!=ERROR);
+    a.baseRegion=baseline;
+    a.active=true; // cleanup is now armed before any native window mutation
+    Wh_Log(L"[ATB] Watchdog owns original HWND region (mode=%d, fingerprint=%llu)",
+           (int)a.hadBaseRegion,atb_trial::geometry.baselineRegionHash);
     // Only live trial mutation: move the existing native taskbar HWND upward
     // without asking the shell to increase its registered appbar reservation.
     if(!SetWindowPos(hwnd,nullptr,wanted.left,wanted.top,
           wanted.right-wanted.left,wanted.bottom-wanted.top,
           SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER|
-          SWP_NOSENDCHANGING))return false;
+          SWP_NOSENDCHANGING)) {
+        AtbRestoreNativeOverhang();
+        return false;
+    }
     RECT now{};
     MONITORINFO after{sizeof(after)};
     if(!GetWindowRect(hwnd,&now) || !AtbEqualRect(now,wanted) ||
@@ -955,9 +1043,9 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
                  SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOSENDCHANGING);
         }
         Wh_Log(L"[ATB] Extended native HWND or work-area invariant failed; aborted");
+        AtbRestoreNativeOverhang();
         return false;
     }
-    a.active=true;
     try {
     // Give the root TaskbarFrame the entire visual/input height. Keeping
     // the ROOT at the old 42px height would prevent hit testing on animated
@@ -1044,8 +1132,12 @@ bool AtbStartNativeOverhang(FrameworkElement const& taskbarFrame) {
     }
     // Only the native bottom strip accepts hits until an actual magnified
     // icon extends into the overhang. Never grab empty desktop pixels.
-    HRGN region=CreateRectRgn(0,extra,wanted.right-wanted.left,
-                              wanted.bottom-wanted.top);
+    if(!AtbBaselineRegionMatches(hwnd)) {
+        Wh_Log(L"[ATB] Overhang refused: original region modified before first replacement");
+        AtbRestoreNativeOverhang();
+        return false;
+    }
+    HRGN region=AtbMakeBottomRegion();
     if(!AtbSetRegion(region)) {
         AtbRestoreNativeOverhang();
         return false;
@@ -1075,7 +1167,7 @@ void AtbUpdateNativeOverhangRegion(DockAnimationContext const& ctx) {
         return;
     }
     const int width=now.right-now.left, height=now.bottom-now.top;
-    HRGN full=CreateRectRgn(0,a.extraPixels,width,height);
+    HRGN full=AtbMakeBottomRegion();
     if(!full)return;
     // Use the live XAML transform graph, not a synthetic card center or a
     // constant half-taskbar Y. The old synthetic coordinates ignored the
@@ -2011,10 +2103,7 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             // but empty overhang must never capture clicks after focus-out.
             if(g_atbOverhang.active) {
                 auto& overhang=g_atbOverhang;
-                HRGN bottomOnly=CreateRectRgn(
-                    0,overhang.extraPixels,
-                    overhang.expected.right-overhang.expected.left,
-                    overhang.expected.bottom-overhang.expected.top);
+                HRGN bottomOnly=AtbMakeBottomRegion();
                 AtbSetRegion(bottomOnly);
             }
 
