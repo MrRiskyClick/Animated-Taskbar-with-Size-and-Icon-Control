@@ -1597,21 +1597,6 @@ static bool ShouldAnimateElement(FrameworkElement const& e) {
     return true;
 }
 
-static void ResetElementTransforms(FrameworkElement const& element) {
-    auto tg = element.RenderTransform().try_as<TransformGroup>();
-    if (!tg || tg.Children().Size() < 4) return;
-
-    auto waveScale = tg.Children().GetAt(0).try_as<ScaleTransform>();
-    auto waveTranslate = tg.Children().GetAt(1).try_as<TranslateTransform>();
-    auto bounceScale = tg.Children().GetAt(2).try_as<ScaleTransform>();
-    auto bounceTranslate = tg.Children().GetAt(3).try_as<TranslateTransform>();
-
-    if (waveScale) { waveScale.ScaleX(1.0); waveScale.ScaleY(1.0); }
-    if (waveTranslate) { waveTranslate.X(0.0); }
-    if (bounceScale) { bounceScale.ScaleX(1.0); bounceScale.ScaleY(1.0); }
-    if (bounceTranslate) { bounceTranslate.Y(0.0); }
-}
-
 static bool RebaseIconGeometryFast(DockAnimationContext& ctx) {
     auto frame = ctx.taskbarFrame.get();
     if (!frame) return false;
@@ -2102,7 +2087,6 @@ void OnCompositionTargetRendering(winrt::Windows::Foundation::IInspectable const
             // The native HWND may remain extended until the lease expires,
             // but empty overhang must never capture clicks after focus-out.
             if(g_atbOverhang.active) {
-                auto& overhang=g_atbOverhang;
                 HRGN bottomOnly=AtbMakeBottomRegion();
                 AtbSetRegion(bottomOnly);
             }
