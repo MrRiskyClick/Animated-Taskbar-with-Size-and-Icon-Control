@@ -1,3 +1,5 @@
+> **SAFETY HOLD — October 30, 2026:** The v0.3.3 live taskbar trial made application icons disappear; disabling the mod did not recover them. The user manually restarted Explorer to restore normal operation. **All live testing steps below are superseded and MUST NOT be executed.** v0.3.4 and the updated normal watchdog fail closed. See [incident report](./INCIDENT_2026-10-30_LIVE_TASKBAR_RECOVERY.md). Keep the user's installed mod OFF. No automatic Explorer restarts, admin elevation or remote PC control.
+
 # Controlled Native Windhawk Test — USER-OPERATED ONLY
 
 **Status:** Experimental, not a production release. This is the first *functional*
