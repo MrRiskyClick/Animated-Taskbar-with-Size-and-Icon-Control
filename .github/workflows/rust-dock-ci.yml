@@ -1,0 +1,59 @@
+name: Rust native dock — isolated Windows build
+
+on:
+  push:
+    branches:
+      - feature/rust-native-dock-v0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-math:
+    name: Pure animation and hover behavior tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-dock
+      - name: Unit tests (no display APIs)
+        run: cargo test --manifest-path rust-dock/Cargo.toml --verbose
+
+  win32-build:
+    name: Build native Win32/DWM dock
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-dock
+      - name: Compile native app and run pure logic tests
+        shell: pwsh
+        run: |
+          cargo test --manifest-path rust-dock/Cargo.toml --verbose
+          if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed' }
+          cargo build --manifest-path rust-dock/Cargo.toml --release
+          if ($LASTEXITCODE -ne 0) { throw 'Rust Win32 build failed' }
+          if (-not (Test-Path 'rust-dock/target/release/atb-rust-dock.exe')) { throw 'Dock executable missing' }
+      - name: Static scope gate (no modifications to Explorer/native taskbar)
+        shell: pwsh
+        run: |
+          $file = Get-Content rust-dock/src/windows_dock.rs -Raw
+          foreach ($forbidden in @('SetWindowRgn(', 'SHAppBarMessage(', 'SetWindowLongW(', 'SetWindowLongPtrW(', 'TerminateProcess(', 'CreateRemoteThread(', 'OpenProcess(PROCESS_ALL_ACCESS', 'FindWindowW(')) {
+            if ($file.Contains($forbidden)) { throw "Forbidden native taskbar mutation: $forbidden" }
+          }
+          Write-Host 'PASS: no Explorer HWND geometry, clipping region, appbar or process injection'
+      - name: Archive developer prototype (no installer, no auto-run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: atb-rust-dock-windows-dev
+          path: rust-dock/target/release/atb-rust-dock.exe
+          retention-days: 7
