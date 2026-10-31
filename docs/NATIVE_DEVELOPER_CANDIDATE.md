@@ -17,7 +17,7 @@ manual UI acceptance are complete.
   0 = no pip, 1/2/3 = corresponding dots, 4+ = 22px bar. Original native
   indicator opacity and visual ownership are saved/restored conditionally.
 - New optional `EnableNativeOverhang`, **OFF by default**, whose
-  activation requires a fresh, matching `ATB2` lease with:
+  activation requires a fresh, matching `ATB3` lease with:
   Explorer PID, live independent watchdog PID, 120s UTC deadline,
   fresh heartbeat, **original native taskbar rectangle**, and
   the exact expected top coordinate.
@@ -41,7 +41,7 @@ manual UI acceptance are complete.
   region fingerprint aborts cleanup rather than clobbering that mod.
 - An **independent, one-shot 120-second PowerShell watchdog**
   `experiments/run-native-overhang-trial.ps1` writes a bounded
-  ATB2 lease, revokes it at expiration, and independently restores the
+  ATB3 lease, revokes it at expiration, and independently restores the
   native window rectangle if it matches the trial's expected geometry.
   The region is restored only when both its ownership marker and
   FNV-1a fingerprint match the actual Win32 region, protecting concurrent
@@ -68,7 +68,7 @@ manual UI acceptance are complete.
   desktop work area, then restored by another process.
 - Parent crash injection: the resizing process exits forcibly; its
   **independent watchdog** restores the native window geometry.
-- The PowerShell ATB2 `-SelfTest` mode runs isolated inside TEMP, never
+- The PowerShell ATB3 `-SelfTest` mode runs isolated inside TEMP, never
   accesses Explorer, verifies window-region fingerprint conflict detection,
   and finishes with the lease marked `REVOKED`.
 - A negative test verifies that a prior unresolved lease cannot silently
@@ -81,7 +81,7 @@ manual UI acceptance are complete.
 The user completed the first supervised 120-second Windows trial with the
 experimental overhang setting enabled, and **observed actual icons still
 clipping at the taskbar edge**. The watcher completed normally, revoked the
-ATB2 lease, and printed that the native mod was inert. This is a real
+ATB3 lease, and printed that the native mod was inert. This is a real
 behavioral failure; earlier CI geometry probes were not visual proof.
 
 The subsequent unverified code change replaces the fragile depth-1/2
@@ -93,11 +93,44 @@ hit-test mask, each live icon uses `TransformToVisual(XamlRoot.Content)`
 and `TransformBounds`, avoiding synthetic Y positions and failing
 gracefully when transform bounds are unavailable. After a refused first
 layout probe, pointer movement retries no more than every 700ms while the
-original strict ATB2 lease is valid. More precise refusal logging was added.
+original strict ATB3 lease is valid. More precise refusal logging was added.
 
 **Manual verification is required after the new CI passes.** Do not mark
 the clipping defect fixed merely because the source compiles or the
 GitHub-hosted native HWND probe passes.
+
+## Manual test 2 — exact blocker discovered, native v0.3.2 (not user-verified)
+
+User's Windhawk v0.3.1 log showed `Watcher observed` and native animation
+hooks installed, but all eight attempts to activate overhang failed with:
+`Overhang refused: native HWND already has a region; preserving foreign
+component`. This is conclusive proof that the window was **never**
+expanded; repeated XAML clip/layout tuning was not the first issue.
+
+**Cause:** The mod rejected every pre-existing `GetWindowRgn` result other
+than `ERROR` as a foreign conflict. Existing taskbar window regions are a
+valid Windows state and must not be silently discarded.
+
+**v0.3.2 code change:** The external process snapshots any original native
+region BEFORE issuing a new **ATB3** lease. The lease pins the original region
+mode and 64-bit RGNDATA fingerprint alongside exact Explorer PID, watchdog PID,
+heartbeat, deadline, and original HWND bounds. The mod compares actual
+pretrial region with this pinned snapshot, keeps its own private copy, and
+constructs the temporary region by moving the original shape down and adding
+only actual transformed icon hit bounds in the overhang. This keeps an
+existing native taskbar shape rather than replacing it with a full rectangle.
+
+On expiration/unload, the in-process code restores the exact original region
+only when the temporary owned region and ownership fingerprint still match.
+The independent watchdog has its OWN copy of the original region and can
+restore it after a mod crash when Explorer is responsive. Any foreign
+intervening modification still causes **no overwrite**. Old ATB3 leases are
+rejected: this C++ build MUST be used with the matching new watchdog.
+
+The CI disposable HWND test exercises a pre-existing region snapshot,
+replacement and exact restoration. This is NOT visual verification of the
+user's live taskbar; a manual v0.3.2 trial is required. Do not assume that
+remaining XAML clipping or pointer hit-test problems are resolved.
 
 ## What is NOT yet verified
 
