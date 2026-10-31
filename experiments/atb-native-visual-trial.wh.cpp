@@ -1,8 +1,8 @@
 // ==WindhawkMod==
 // @id              atb-animated-taskbar-trial
-// @name              Animated Taskbar Native Hover (Developer Trial)
+// @name              Animated Taskbar Native Hover (SAFETY HOLD)
 // @description       Developer-only native icon magnification with collision-free push-out; guarded by an external expiring test lease.
-// @version           0.3.3
+// @version           0.3.4
 // @author            Animated Taskbar contributors (Ph0en1x-dev / digART attribution below)
 // @license           GPL-3.0
 // @github            https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control
@@ -25,10 +25,12 @@
 /*
 # Animated Taskbar — native developer integration
 
-**Experimental code. Not a complete or approved mod.**
+**SAFETY HOLD — LIVE TRIAL DISABLED. No hooks or taskbar geometry changes.**
 The native button animation and reversible 0/1/2/3/4+ pips are in development.
-This build runs only when a live, matching, external 120-second developer
-lease is supplied; absent or invalid leases fail closed.
+The October 30, 2026 real Windows trial lost the taskbar app icon row.
+Disabling the mod did not recover the icons; the user restarted Explorer.
+This v0.3.4 release refuses to initialize, EVEN with a lease.
+Do not reactivate live trials until recovery is independently verified.
 
 ## Currently implemented
 - Native Taskbar.TaskListButton XAML hover animation.
@@ -2353,6 +2355,16 @@ HMODULE WINAPI LoadLibraryExW_Hook(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dw
 
 // Windhawk entry points
 BOOL Wh_ModInit() {
+    // OCT 30 2026 SAFETY HOLD: On the user's real Windows 11 taskbar,
+    // HWND extension + SetWindowRgn produced disappearing app icons.
+    // The actual taskbar did not recover on unload/watchdog expiry;
+    // the user manually restarted Explorer to recover it.
+    // There is NO acceptable real-device recovery guarantee yet.
+    // Do not run animations, touch XAML, or install ANY native hooks.
+    Wh_Log(L"[ATB] SAFETY HOLD: native developer trial is disabled after real taskbar corruption; no hooks installed");
+    return FALSE;
+    // Disabled legacy candidate preserved below for offline analysis only.
+    // Reenabling requires an independently reviewed recovery design.
     Wh_Log(L"[ATB] Developer trial module initialized (no styling changes yet)");
     if (!atb_trial::Arm()) {
         Wh_Log(L"[ATB] FAIL CLOSED: no fresh watcher lease for this Explorer PID");
