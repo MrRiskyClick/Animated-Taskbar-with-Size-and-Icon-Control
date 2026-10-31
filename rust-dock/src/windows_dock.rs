@@ -82,7 +82,7 @@ fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND)->Vec<Group>{
         let style=GetWindowLongW(hwnd,GWL_EXSTYLE) as u32;
         if (style & WS_EX_TOOLWINDOW)!=0{return 1;}
         let mut cloaked:u32=0;
-        if DwmGetWindowAttribute(hwnd,DWMWA_CLOAKED,
+        if DwmGetWindowAttribute(hwnd,DWMWA_CLOAKED as u32,
             &mut cloaked as *mut _ as *mut c_void,
             std::mem::size_of::<u32>() as u32)>=0 && cloaked!=0 {return 1;}
         let name=window_title(hwnd);
