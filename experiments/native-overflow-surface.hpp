@@ -59,7 +59,12 @@ public:
         hwnd_ = CreateWindowExW(ex,wc.lpszClassName,L"",
             WS_POPUP,overflowBounds.left,overflowBounds.top,
             w,h,nullptr,nullptr,wc.hInstance,nullptr);
-        if (!hwnd_) return false;
+        if (!hwnd_) {
+            // The class callback lives in this mod's DLL. Do not leave a
+            // stale callback registered after a failed creation.
+            UnregisterClassW(wc.lpszClassName,wc.hInstance);
+            return false;
+        }
         bounds_=overflowBounds;
         if (!AllocateSurface(w,h)) {
             Destroy();
@@ -126,6 +131,12 @@ public:
     void Destroy() {
         Hide();
         if (hwnd_) {DestroyWindow(hwnd_);hwnd_=nullptr;}
+        // Surface destruction must run on its creating UI thread. When
+        // the last overlay closes, unregister the class so a Windhawk DLL
+        // unload never leaves a WNDPROC pointer into the unloaded module.
+        // With multiple monitors, UnregisterClassW fails while other owned
+        // overlay windows still exist; the final Destroy() unregisters it.
+        UnregisterClassW(L"ATB.OverflowVisualOnly.1",GetModuleHandleW(nullptr));
         if (bufferDC_ && bitmapOld_) {
             SelectObject(bufferDC_,bitmapOld_);
             bitmapOld_=nullptr;
