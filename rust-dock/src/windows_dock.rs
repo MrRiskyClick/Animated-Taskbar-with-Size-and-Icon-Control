@@ -459,7 +459,7 @@ fn save_timing(t:Timing){
         if let Some(parent)=path.parent(){
             if std::fs::create_dir_all(parent).is_err(){return;}
         }
-        let content=format!("hover_delay_ms={}\\ndismiss_delay_ms={}\\n",
+        let content=format!("hover_delay_ms={}\ndismiss_delay_ms={}\n",
                             t.hover_delay_ms,t.dismiss_delay_ms);
         let _=std::fs::write(path,content);
     }
