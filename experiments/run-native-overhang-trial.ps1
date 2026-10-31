@@ -265,14 +265,14 @@ try{
   # Read-only installed-mode inspection. Never request registry WRITE ACL.
   # The experimental local mod MUST start disabled before lease is issued.
   # After expiry its UI switch can remain on, but DLL stays inert without
-  # the original Explorer PID and live, fresh ATB2 watcher lease.
+  # the original Explorer PID and live, fresh ATB3 watcher lease.
   $disabled=Assert-AtbOwnModReadable
   if($disabled -ne 1){throw 'Disable the experimental local mod in Windhawk before arming'}
   Assert-NoAtbCompetingNativeDock
  }
  if($TestUnresolved) {
   if(-not $SelfTest){throw 'TestUnresolved is restricted to isolated CI self-test'}
-  [IO.File]::WriteAllText($lease,'ATB2 unresolved',
+  [IO.File]::WriteAllText($lease,'ATB3 unresolved',
                            [Text.Encoding]::ASCII)
  }
  # Fail CLOSED after a prior watchdog crash or incomplete rollback.
@@ -281,7 +281,7 @@ try{
  if([IO.File]::Exists($lease)){
   $prior=([IO.File]::ReadAllText($lease,[Text.Encoding]::ASCII)).Trim()
   if($prior -ne 'REVOKED'){
-   throw 'Unresolved prior ATB2 lease: refusing to rearm. Disable the local mod and inspect the taskbar before any new trial.'
+   throw 'Unresolved prior ATB3 lease: refusing to rearm. Disable the local mod and inspect the taskbar before any new trial.'
   }
  }
  if($SelfTest){
