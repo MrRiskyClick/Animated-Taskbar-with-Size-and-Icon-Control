@@ -389,6 +389,7 @@ unsafe extern "system" fn dock_proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRESUL
                 if w==TIMER_REFRESH {app.refresh();}
             });0
         }
+        WM_RBUTTONUP=>{show_dock_menu(hwnd);0}
         WM_LBUTTONUP=>{
             let sx=(l as u16 as i16) as i32;
             let sy=((l>>16) as u16 as i16) as i32;
@@ -418,8 +419,109 @@ unsafe extern "system" fn preview_proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRE
         _=>DefWindowProcW(hwnd,msg,w,l)
     }
 }
-fn timing_from_args()->Timing{
+const MENU_HOVER_0: usize=1001;
+const MENU_HOVER_250: usize=1002;
+const MENU_HOVER_450: usize=1003;
+const MENU_HOVER_750: usize=1004;
+const MENU_HOVER_1000: usize=1005;
+const MENU_DISMISS_0:usize=1010;
+const MENU_DISMISS_250:usize=1011;
+const MENU_DISMISS_500:usize=1012;
+const MENU_EXIT:usize=1099;
+
+fn settings_path()->Option<std::path::PathBuf>{
+    std::env::var_os("LOCALAPPDATA").map(|base|{
+        std::path::PathBuf::from(base)
+            .join("ATBRustDock").join("settings.ini")
+    })
+}
+fn load_saved_timing()->Timing{
     let mut t=Timing::default();
+    if let Some(path)=settings_path(){
+        if let Ok(source)=std::fs::read_to_string(path){
+            for line in source.lines(){
+                if let Some((key,value))=line.split_once('='){
+                    if let Ok(n)=value.trim().parse::<u64>(){
+                        match key.trim(){
+                            "hover_delay_ms"=>t.hover_delay_ms=n.min(3000),
+                            "dismiss_delay_ms"=>t.dismiss_delay_ms=n.min(3000),
+                            _=>{}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    t
+}
+fn save_timing(t:Timing){
+    if let Some(path)=settings_path(){
+        if let Some(parent)=path.parent(){
+            if std::fs::create_dir_all(parent).is_err(){return;}
+        }
+        let content=format!("hover_delay_ms={}\\ndismiss_delay_ms={}\\n",
+                            t.hover_delay_ms,t.dismiss_delay_ms);
+        let _=std::fs::write(path,content);
+    }
+}
+
+unsafe fn show_dock_menu(hwnd:HWND){
+    let menu=CreatePopupMenu();
+    if menu.is_null(){return;}
+    let settings=APP.with(|cell|cell.try_borrow().ok()
+        .and_then(|app|app.as_ref().map(|app|app.hover.timing)))
+        .unwrap_or_default();
+    let hover_values=[
+        (MENU_HOVER_0,0,"Preview hover: Immediate"),
+        (MENU_HOVER_250,250,"Preview hover: 250 ms"),
+        (MENU_HOVER_450,450,"Preview hover: 450 ms"),
+        (MENU_HOVER_750,750,"Preview hover: 750 ms"),
+        (MENU_HOVER_1000,1000,"Preview hover: 1000 ms"),
+    ];
+    let dismiss_values=[
+        (MENU_DISMISS_0,0,"Dismissal: Immediate"),
+        (MENU_DISMISS_250,250,"Dismissal: 250 ms"),
+        (MENU_DISMISS_500,500,"Dismissal: 500 ms"),
+    ];
+    for (id,ms,text) in hover_values {
+        let flags=MF_STRING|if settings.hover_delay_ms==ms {MF_CHECKED}else{0};
+        AppendMenuW(menu,flags,id,wide(text).as_ptr());
+    }
+    AppendMenuW(menu,MF_SEPARATOR,0,null());
+    for (id,ms,text) in dismiss_values {
+        let flags=MF_STRING|if settings.dismiss_delay_ms==ms {MF_CHECKED}else{0};
+        AppendMenuW(menu,flags,id,wide(text).as_ptr());
+    }
+    AppendMenuW(menu,MF_SEPARATOR,0,null());
+    AppendMenuW(menu,MF_STRING,MENU_EXIT,wide("Exit ATB Dock").as_ptr());
+    let mut pt:POINT=std::mem::zeroed();
+    GetCursorPos(&mut pt);
+    let selected=TrackPopupMenu(menu,TPM_RETURNCMD|TPM_NONOTIFY|TPM_RIGHTBUTTON,
+                                pt.x,pt.y,0,hwnd,null());
+    DestroyMenu(menu);
+    if selected as usize==MENU_EXIT {
+        PostMessageW(hwnd,WM_CLOSE,0,0);
+        return;
+    }
+    let mut update=false;
+    with_app(|app|{
+        match selected as usize{
+            MENU_HOVER_0=>{app.hover.timing.hover_delay_ms=0;update=true;},
+            MENU_HOVER_250=>{app.hover.timing.hover_delay_ms=250;update=true;},
+            MENU_HOVER_450=>{app.hover.timing.hover_delay_ms=450;update=true;},
+            MENU_HOVER_750=>{app.hover.timing.hover_delay_ms=750;update=true;},
+            MENU_HOVER_1000=>{app.hover.timing.hover_delay_ms=1000;update=true;},
+            MENU_DISMISS_0=>{app.hover.timing.dismiss_delay_ms=0;update=true;},
+            MENU_DISMISS_250=>{app.hover.timing.dismiss_delay_ms=250;update=true;},
+            MENU_DISMISS_500=>{app.hover.timing.dismiss_delay_ms=500;update=true;},
+            _=>{}
+        }
+        if update{save_timing(app.hover.timing);}
+    });
+}
+
+fn timing_from_args()->Timing{
+    let mut t=load_saved_timing();
     for arg in std::env::args().skip(1) {
         if let Some(v)=arg.strip_prefix("--hover-delay-ms="){
             if let Ok(n)=v.parse::<u64>(){t.hover_delay_ms=n.min(3000);}
@@ -476,7 +578,7 @@ pub fn run()->Result<(),String>{
         with_app(|app|app.refresh());
         ShowWindow(dock,SW_SHOWNOACTIVATE);
         UpdateWindow(dock);
-        SetTimer(dock,TIMER_TICK,32,None); // only GDI/CPU while animated; reduce later
+        SetTimer(dock,TIMER_TICK,32,None); // prototype 32ms hover and animation scheduler
         SetTimer(dock,TIMER_REFRESH,2000,None); // prototype fallback until WinEventHook
         let mut msg:MSG=std::mem::zeroed();
         while GetMessageW(&mut msg,null_mut(),0,0)>0{
