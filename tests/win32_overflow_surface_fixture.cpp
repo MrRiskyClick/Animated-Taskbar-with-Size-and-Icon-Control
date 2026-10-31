@@ -51,7 +51,7 @@ int main(){
     REQUIRE(SendMessageW(owned,WM_MOUSEACTIVATE,0,0)==MA_NOACTIVATE,
             "Backup activation guard");
 
-    HICON app=LoadIconW(nullptr,IDI_APPLICATION);
+    HICON app=LoadIconW(nullptr,MAKEINTRESOURCEW(32512));
     REQUIRE(app!=nullptr,"Windows stock icon available");
     atb_overlay::IconSprite icons[]={{app,22,-4,32,32},{app,86,0,22,22}};
     REQUIRE(overlay.Render(icons,2),"Layered icon surface render");
