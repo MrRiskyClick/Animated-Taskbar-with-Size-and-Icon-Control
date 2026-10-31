@@ -1,6 +1,8 @@
 # GitHub-developed experimental independent taskbar-geometry lease/watchdog.
 # PowerShell 5.1+. No installer, startup task, shell restart, auto-hide
 # or registry writes at all. Run as NORMAL USER, never elevated.
+# ATB3 also snapshots any pre-existing native taskbar HWND region for exact
+# compare-before-replacement and watchdog restoration.
 # Reapplication is prevented by a 120-second irrevocable lease bound to
 # the exact current Explorer PID and an independent live watcher process.
 # On expiry, the mod may still show enabled in Windhawk's UI, but remains
@@ -51,6 +53,8 @@ public static class AtbGeoWin32 {
  [DllImport("gdi32.dll",SetLastError=true)]
  public static extern bool DeleteObject(IntPtr region);
  [DllImport("gdi32.dll",SetLastError=true)]
+ public static extern int CombineRgn(IntPtr dst,IntPtr src1,IntPtr src2,int mode);
+ [DllImport("gdi32.dll",SetLastError=true)]
  public static extern uint GetRegionData(IntPtr region,uint length,byte[] buffer);
  [DllImport("user32.dll",SetLastError=true)]
  public static extern int GetWindowRgn(IntPtr hwnd,IntPtr region);
@@ -93,6 +97,43 @@ public static class AtbGeoWin32 {
      return owned && rejected;
    } finally {DestroyWindow(hwnd);}
  }
+ // A non-empty native region can be preserved and restored exactly.
+ // Only a disposable HWND owned by this short-lived CI/self-test process.
+ public static bool RegionPreservationSelfTest() {
+   var hwnd=CreateWindowEx(0,"STATIC","ATB baseline-preservation test",
+      0x80000000,10,10,500,100,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
+   if(hwnd==IntPtr.Zero)return false;
+   var snapshot=CreateRectRgn(0,0,0,0);
+   try {
+     var baseRgn=CreateRectRgn(17,12,487,91);
+     if(baseRgn==IntPtr.Zero)return false;
+     if(SetWindowRgn(hwnd,baseRgn,false)==0){
+       DeleteObject(baseRgn);return false;
+     }
+     if(GetWindowRgn(hwnd,snapshot)==0)return false;
+     var expected=RegionHash(snapshot);
+     if(expected==0)return false;
+     var expanded=CreateRectRgn(0,0,500,100);
+     if(expanded==IntPtr.Zero)return false;
+     if(SetWindowRgn(hwnd,expanded,false)==0){
+       DeleteObject(expanded);return false;
+     }
+     var restored=CreateRectRgn(0,0,0,0);
+     if(restored==IntPtr.Zero)return false;
+     if(CombineRgn(restored,snapshot,IntPtr.Zero,5)==0){
+       DeleteObject(restored);return false;
+     }
+     if(SetWindowRgn(hwnd,restored,false)==0){
+       DeleteObject(restored);return false;
+     }
+     var current=CreateRectRgn(0,0,0,0);
+     if(current==IntPtr.Zero)return false;
+     try {
+       return GetWindowRgn(hwnd,current)!=0 &&
+              RegionHash(current)==expected;
+     } finally {DeleteObject(current);}
+   } finally {if(snapshot!=IntPtr.Zero)DeleteObject(snapshot);DestroyWindow(hwnd);}
+ }
  public static bool RegionFingerprintMatches(IntPtr hwnd) {
   var property = GetProp(hwnd,"ATB_REGION_FINGERPRINT_V2");
   if(property==IntPtr.Zero)return false;
@@ -117,14 +158,18 @@ $root=if($SelfTest){
 }else{
  Join-Path $env:LOCALAPPDATA 'AnimatedTaskbarTrial'
 }
-if($SelfTest -and -not [AtbGeoWin32]::RegionFingerprintSelfTest()){
- throw 'Disposably owned-HWND region fingerprint self-test failed'
+if($SelfTest -and (-not [AtbGeoWin32]::RegionFingerprintSelfTest() -or
+                    -not [AtbGeoWin32]::RegionPreservationSelfTest())){
+ throw 'Disposable HWND ownership/baseline-region restoration self-test failed'
 }
 [IO.Directory]::CreateDirectory($root)|Out-Null
 $lease=Join-Path $root 'lease.v1'
 $lockPath=Join-Path $root 'watcher.lock'
 $lock=$null
 $trialHwnd=[IntPtr]::Zero
+$baselineRegion=[IntPtr]::Zero  # Owned by this independent watcher process
+$regionMode=0
+[UInt64]$regionHash=0
 $before=$null
 $targetTop=0
 $explorerPid=[uint32]$PID
@@ -176,9 +221,19 @@ function Stop-NativeTrial(){
      [AtbGeoWin32]::RegionFingerprintMatches($trialHwnd)){
    # No writes unless this precise region is still the one our mod
    # published. Avoid silently removing a different Windhawk mod's region.
-   [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_REGION_FINGERPRINT_V2')
-   [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_OWNED_OVERHANG_V2')
-   [void][AtbGeoWin32]::SetWindowRgn($trialHwnd,[IntPtr]::Zero,$true)
+   # Restore the pre-trial window region, NOT nullptr when Windows or
+   # another component originally supplied a region. SetWindowRgn takes
+   # ownership of our snapshot only on success.
+   $restore=[IntPtr]::Zero
+   if($regionMode -eq 1){$restore=$baselineRegion}
+   if([AtbGeoWin32]::SetWindowRgn($trialHwnd,$restore,$true) -ne 0) {
+    if($regionMode -eq 1){$script:baselineRegion=[IntPtr]::Zero}
+    [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_REGION_FINGERPRINT_V2')
+    [void][AtbGeoWin32]::RemoveProp($trialHwnd,'ATB_OWNED_OVERHANG_V2')
+    Write-Host '[ATB] Watchdog restored exact original taskbar window region'
+   }else{
+    Write-Warning 'Baseline taskbar region restoration failed; manual Explorer restart may be required'
+   }
   }else{
    Write-Warning 'Window region fingerprint unverified or Explorer unresponsive; preserving external state'
    # Another component may have taken ownership: do not overwrite it.
@@ -242,6 +297,24 @@ try{
   $r=New-Object AtbGeoWin32+RECT
   if(-not [AtbGeoWin32]::GetWindowRect($trialHwnd,[ref]$r)){throw 'Could not snapshot taskbar rectangle'}
   $before=$r
+  # Take an independent, process-owned HRGN snapshot BEFORE publishing
+  # any lease. ATB3 pins its content hash; the mod rejects any mismatch.
+  $baselineRegion=[AtbGeoWin32]::CreateRectRgn(0,0,0,0)
+  if($baselineRegion -eq [IntPtr]::Zero){
+   throw 'Unable to snapshot original taskbar window region'
+  }
+  $regionKind=[AtbGeoWin32]::GetWindowRgn($trialHwnd,$baselineRegion)
+  if($regionKind -ne 0) {
+   $regionMode=1
+   $regionHash=[AtbGeoWin32]::RegionHash($baselineRegion)
+   if($regionHash -eq 0){throw 'Original HWND region could not be fingerprinted; refusing trial'}
+  }else{
+   [void][AtbGeoWin32]::DeleteObject($baselineRegion)
+   $baselineRegion=[IntPtr]::Zero
+   $regionMode=0
+   $regionHash=[UInt64]0
+  }
+  Write-Host ("[ATB] Original taskbar window region: mode={0}, fingerprint={1}" -f $regionMode,$regionHash)
   $height=$before.Bottom-$before.Top
   if($height -lt 30 -or $height -gt 140){throw 'Unexpected taskbar height; fail closed'}
   $monitor=[AtbGeoWin32]::MonitorFromWindow($trialHwnd,2)
@@ -272,9 +345,10 @@ try{
    }
    $now=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
    if($now -ge $deadlineUtc){break}
-   Write-Lease ("ATB2 {0} {1} {2} {3} {4} {5} {6} {7} {8}`n" -f
+   Write-Lease ("ATB3 {0} {1} {2} {3} {4} {5} {6} {7} {8} {9} {10}`n" -f
      $explorerPid,$deadlineUtc,$now,$PID,
-     $before.Left,$before.Top,$before.Right,$before.Bottom,$targetTop)
+     $before.Left,$before.Top,$before.Right,$before.Bottom,$targetTop,
+     $regionMode,$regionHash)
    Start-Sleep -Milliseconds 200
   }
  }finally{
@@ -290,5 +364,8 @@ try{
   }
  }
 }finally{
+ if($baselineRegion -ne [IntPtr]::Zero){
+  [void][AtbGeoWin32]::DeleteObject($baselineRegion)
+ }
  if($lock){$lock.Dispose()}
 }
