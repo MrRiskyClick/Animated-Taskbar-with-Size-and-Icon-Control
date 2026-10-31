@@ -169,7 +169,7 @@ jobs:
           if (-not (Test-Path $flags)) { throw "Windhawk flags missing" }
           $source = Join-Path (Get-Location) 'experiments/atb-native-visual-trial.wh.cpp'
           $output = Join-Path $env:RUNNER_TEMP 'atb-native-trial.dll'
-          & $compiler "@$flags" "-I$headers" -shared -o $output $source -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32 -lgdi32
+          & $compiler "@$flags" "-I$headers" -Werror=unused-function -Werror=unused-variable -shared -o $output $source -lole32 -loleaut32 -lruntimeobject -lshcore -lwindowsapp -luser32 -lgdi32
           if ($LASTEXITCODE -ne 0) { throw "Native Windhawk build failed" }
           if (-not (Test-Path $output)) { throw "Compiled DLL missing" }
           $hash = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
