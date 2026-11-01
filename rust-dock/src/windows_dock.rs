@@ -99,9 +99,9 @@ fn best_icon(hwnd:HWND,key:&str)->(HICON,bool){
         (icon,false)
     }
 }
-fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND)->Vec<Group>{
+fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND,pips_hwnd:HWND)->Vec<Group>{
     struct Scan{
-        own:[HWND;2],
+        own:[HWND;3],
         groups:Vec<Group>,
         positions:HashMap<String,usize>
     }
@@ -139,7 +139,7 @@ fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND)->Vec<Group>{
         }
         1
     }
-    let mut scan=Scan{own:[dock_hwnd,preview_hwnd],
+    let mut scan=Scan{own:[dock_hwnd,preview_hwnd,pips_hwnd],
                       groups:Vec::new(),positions:HashMap::new()};
     unsafe {EnumWindows(Some(each),&mut scan as *mut _ as isize);}
     scan.groups
@@ -228,6 +228,7 @@ impl Preview {
 
 struct App{
     dock:HWND,
+    pips:HWND,
     preview:Preview,
     groups:Vec<Group>,
     motion:SpringDock,
@@ -283,14 +284,20 @@ impl App {
                 self.width,self.height,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER);
             SetLayeredWindowAttributes(self.dock,MAGIC_BG,
                 self.settings.get("icon_opacity") as u8,LWA_COLORKEY|LWA_ALPHA);
+            // Our own separate, click-through pip HWND supports independent alpha.
+            SetWindowPos(self.pips,HWND_TOPMOST,self.dock_left,self.dock_top,
+                self.width,self.height,SWP_NOACTIVATE|SWP_NOOWNERZORDER);
+            SetLayeredWindowAttributes(self.pips,MAGIC_BG,
+                self.settings.get("pip_alpha") as u8,LWA_COLORKEY|LWA_ALPHA);
             SetTimer(self.dock,TIMER_TICK,self.settings.get("frame_ms") as u32,None);
             InvalidateRect(self.dock,null(),1);
+            InvalidateRect(self.pips,null(),1);
         }
         self.preview.clear();
         self.hover.force_close();
     }
     fn refresh(&mut self){
-        let mut new_groups=scan_groups(self.dock,self.preview.hwnd);
+        let mut new_groups=scan_groups(self.dock,self.preview.hwnd,self.pips);
         let mut old=std::mem::take(&mut self.groups);
         let mut updated_order=false;
         for new in &mut new_groups {
@@ -319,7 +326,7 @@ impl App {
         self.groups=new_groups;
         if updated_order{save_settings(&self.settings);}
         if windows_changed{
-            unsafe{InvalidateRect(self.dock,null(),1);}
+            unsafe{InvalidateRect(self.dock,null(),1);InvalidateRect(self.pips,null(),1);}
             // A grouped preview is stale when its source set changed.
             if self.hover.active().is_some() {
                 self.preview.clear();
@@ -327,15 +334,15 @@ impl App {
             }
         }
         if keys_changed {
-            self.motion.resize(self.groups.len()+1); // slot 0 = Start
+            self.motion.resize(self.groups.len()+2); // Start=0, Task View=1
             // Never start newly created icon slots at a mismatched old size.
-            if self.motion.sizes.len()==1 {
+            if self.motion.sizes.len()==2 {
                 self.motion.sizes[0]=self.settings.get("start_size") as f32;
             }
             self.hover.force_close();
             self.preview.clear();
             self.current_icon=None;
-            unsafe{InvalidateRect(self.dock,null(),1);}
+            unsafe{InvalidateRect(self.dock,null(),1);InvalidateRect(self.pips,null(),1);}
         }
     }
     fn fullscreen_foreground(&self)->bool{
@@ -355,7 +362,11 @@ impl App {
         let fullscreen=self.fullscreen_foreground();
         if fullscreen!=self.was_fullscreen {
             self.was_fullscreen=fullscreen;
-            unsafe{ShowWindow(self.dock,if fullscreen{SW_HIDE}else{SW_SHOWNOACTIVATE});}
+            unsafe{
+                let action=if fullscreen{SW_HIDE}else{SW_SHOWNOACTIVATE};
+                ShowWindow(self.dock,action);
+                ShowWindow(self.pips,action);
+            }
             if fullscreen{self.preview.clear();self.hover.force_close();}
         }
         if fullscreen{return;}
@@ -369,13 +380,13 @@ impl App {
         let ms=now_ms(self.started);
         if inside_preview {self.hover.keep_open();}
         else if let Some(i)=icon {
-            if i==0 {self.hover.leave(ms);}
+            if i<=1 {self.hover.leave(ms);}
             else {self.hover.enter(i,ms);}
         } else {self.hover.leave(ms);}
         match self.hover.tick(ms){
             PreviewAction::Open(slot)=>{
-                if slot>0 {
-                    if let Some(group)=self.groups.get(slot-1){
+                if slot>1 {
+                    if let Some(group)=self.groups.get(slot-2){
                         let xs=self.motion.positions(self.width as f32);
                         let anchor=self.dock_left+xs[slot] as i32+
                             self.motion.sizes[slot] as i32/2;
@@ -392,13 +403,14 @@ impl App {
             unsafe{InvalidateRect(self.dock,null(),1);}
         }
         let moving=self.motion.tick(icon,dt);
-        if moving{unsafe{InvalidateRect(self.dock,null(),1);}}
+        if moving{unsafe{InvalidateRect(self.dock,null(),1);InvalidateRect(self.pips,null(),1);}}
     }
     fn click_dock(&mut self,x:i32,y:i32){
         let index=self.screen_icon_at(x,y);
         if let Some(i)=index{
             if i==0 {open_start_menu();return;}
-            if let Some(group)=self.groups.get(i-1){
+            if i==1 {open_task_view();return;}
+            if let Some(group)=self.groups.get(i-2){
                 if group.windows.len()==1 {
                     activate_window(group.windows[0].hwnd);
                     self.preview.clear();self.hover.force_close();
@@ -420,11 +432,11 @@ impl App {
         let origin=self.drag_start.take();
         if let Some((from,down_x))=origin {
             let target=self.screen_icon_at(x,y);
-            if from>0 && (x-down_x).abs()>=8 {
+            if from>1 && (x-down_x).abs()>=8 {
                 if let Some(to)=target {
-                    if to>0 && to!=from {
-                        if let Some(key)=self.groups.get(from-1).map(|g|g.key.clone()){
-                            let to_key=self.groups.get(to-1).map(|g|g.key.clone());
+                    if to>1 && to!=from {
+                        if let Some(key)=self.groups.get(from-2).map(|g|g.key.clone()){
+                            let to_key=self.groups.get(to-2).map(|g|g.key.clone());
                             if let Some(target_key)=to_key {
                                 self.settings.order.retain(|x|x!=&key);
                                 let pos=self.settings.order.iter().position(|x|x==&target_key)
@@ -454,6 +466,20 @@ fn open_start_menu(){
         input[1].Anonymous.ki.wVk=VK_LWIN as u16;
         input[1].Anonymous.ki.dwFlags=KEYEVENTF_KEYUP;
         SendInput(2,input.as_ptr(),std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+fn open_task_view(){
+    // Native Windows+Tab via SendInput, with no shell/taskbar modifications.
+    unsafe {
+        let mut inputs:[INPUT;4]=std::mem::zeroed();
+        for (index,vk,up) in [(0,VK_LWIN,false),(1,VK_TAB,false),
+                              (2,VK_TAB,true),(3,VK_LWIN,true)] {
+            inputs[index].r#type=INPUT_KEYBOARD;
+            inputs[index].Anonymous.ki.wVk=vk as u16;
+            if up {inputs[index].Anonymous.ki.dwFlags=KEYEVENTF_KEYUP;}
+        }
+        SendInput(inputs.len() as u32,inputs.as_ptr(),std::mem::size_of::<INPUT>() as i32);
     }
 }
 
