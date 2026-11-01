@@ -58,11 +58,31 @@ All settings are in `%LOCALAPPDATA%\ATBRustDock\settings.ini`, never in the
 registry or Explorer. The dock saves the selected manual application order
 in the same file. The original old two timing properties are migrated.
 
-## Build or run
+## Versioned desktop updates
 
-Download the developer EXE from the successful
-[GitHub Actions run](https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/actions/workflows/rust-dock-ci.yml)
-under `atb-rust-dock-windows-dev`. The EXE runs in user space.
+**v3 is the short display name of Rust package version 0.3.0.** The CI builds
+from `Cargo.toml` and names the artifact `ATB-Dock-v3`, containing
+`ATB-Dock-v3.exe` and `build-info.json`. Each future release increments
+the package version (0.4.0 -> v4, etc.) so executable and Desktop folder names
+update automatically. Rebuilds within the same numbered version retain that
+name, but `build-info.json` records the exact Git commit, run ID and SHA-256.
+
+To update an existing installation (GitHub CLI `gh` must already work), from
+regular PowerShell run:
+
+```powershell
+$updater = Join-Path $env:TEMP 'ATB-update-desktop.ps1'
+Invoke-WebRequest 'https://raw.githubusercontent.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/feature/rust-native-dock-v0/rust-dock/scripts/update-desktop.ps1' -OutFile $updater
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updater
+```
+
+The updater requires a *successful build for the exact current PR head* before
+touching the old installation. It checks the manifest commit and EXE SHA-256,
+closes only the standalone ATB process, renames an old `ATB-Dock-v0.2` Desktop
+folder to `ATB-Dock-v3` when appropriate, copies `ATB-Dock-v3.exe`, removes
+superseded ATB executable names, and prints the version and commit. If an old
+folder has non-ATB files it is retained. No auto-run; the user starts the EXE
+manually. No Windhawk/Explorer mods are changed.
 
 To compile from source:
 ```powershell
