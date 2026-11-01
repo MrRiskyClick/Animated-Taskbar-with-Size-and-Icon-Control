@@ -15,6 +15,7 @@ use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::*;
 use windows_sys::Win32::System::Threading::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
+use windows_sys::Win32::UI::Shell::ShellExecuteW;
 
 use crate::state::{Hover, PreviewAction, SpringDock};
 use crate::settings::Settings;
@@ -42,6 +43,7 @@ struct Group {
     key:String,
     label:String,
     windows:Vec<WindowItem>,
+    pinned_shortcut:Option<String>,
     icon:HICON,
     icon_owned:bool,
 }
@@ -151,6 +153,7 @@ fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND,pips_hwnd:HWND,focus_hwnd:HWND,l
                 let index=scan.groups.len();
                 scan.groups.push(Group{
                     key:key.clone(),label,windows:Vec::new(),
+                    pinned_shortcut:None,
                     icon:null_mut(),icon_owned:false
                 });
                 scan.positions.insert(key,index);
@@ -347,6 +350,22 @@ impl App {
             }
         }
         let mut new_groups=scan_groups(self.dock,self.preview.hwnd,self.pips,self.focus_pips,self.line_pips);
+        // Native pinned .lnk entries represent taskbar buttons even without
+        // running windows. Match an active process by full target path first.
+        for pin in &self.pinned_icons {
+            let key=pin.target.to_ascii_lowercase();
+            if !key.ends_with(".exe"){continue;}
+            if let Some(group)=new_groups.iter_mut().find(|g|g.key==key) {
+                group.pinned_shortcut=Some(pin.shortcut.clone());
+                group.label=pin.name.clone();
+            }else if !new_groups.iter().any(|g|g.key==key) {
+                new_groups.push(Group {
+                    key,label:pin.name.clone(),windows:Vec::new(),
+                    pinned_shortcut:Some(pin.shortcut.clone()),
+                    icon:null_mut(),icon_owned:false
+                });
+            }
+        }
         let mut old=std::mem::take(&mut self.groups);
         let mut updated_order=false;
         for new in &mut new_groups {
@@ -496,6 +515,17 @@ impl App {
             if i==0 {open_start_menu();return;}
             if i==1 {open_task_view();return;}
             if let Some(group)=self.groups.get(i-2){
+                if group.windows.is_empty() {
+                    if let Some(path)=&group.pinned_shortcut {
+                        // Follow the actual user's pinned shortcut; do not
+                        // guess command-line arguments or modify taskbar pins.
+                        unsafe{
+                            ShellExecuteW(null_mut(),wide("open").as_ptr(),
+                                wide(path).as_ptr(),null(),null(),SW_SHOWNORMAL);
+                        }
+                    }
+                    return;
+                }
                 if group.windows.len()==1 {
                     activate_window(group.windows[0].hwnd);
                     self.preview.clear();self.hover.force_close();
