@@ -76,7 +76,7 @@ unsafe fn build_category(ui:&mut Ui) {
         ui.controls.push(track);
         row+=1;
     }
-    // All five categories fit without a scrollbar at 770px.
+    // All six categories fit without a scrollbar at 770px.
 }
 unsafe fn init_window(hwnd:HWND,settings:&Settings){
     let mut ui=Ui{hwnd,active:Category::Layout,tab_buttons:vec![],
