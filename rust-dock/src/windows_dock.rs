@@ -232,37 +232,87 @@ struct App{
     groups:Vec<Group>,
     motion:SpringDock,
     hover:Hover,
+    settings:Settings,
     started:Instant,
     current_icon:Option<usize>,
     width:i32,
+    height:i32,
+    screen_w:i32,
     screen_h:i32,
+    dock_left:i32,
     dock_top:i32,
     last_tick:Instant,
     was_fullscreen:bool,
+    drag_start:Option<(usize,i32)>,
 }
 impl App {
-    fn icon_at(&self,screen_x:i32,screen_y:i32)->Option<usize>{
-        let top=self.dock_top;
-        if screen_y<top+15 || screen_y>=top+DOCK_HEIGHT{return None}
+    fn screen_icon_at(&self,screen_x:i32,screen_y:i32)->Option<usize>{
+        if screen_x<self.dock_left || screen_x>=self.dock_left+self.width ||
+           screen_y<self.dock_top || screen_y>=self.dock_top+self.height{
+            return None;
+        }
+        let x=(screen_x-self.dock_left) as f32;
+        let y=(screen_y-self.dock_top) as f32;
         let xs=self.motion.positions(self.width as f32);
-        xs.iter().enumerate().find(|(i,x)|{
+        xs.iter().enumerate().find(|(i,left)|{
             let size=self.motion.sizes[*i];
-            let y=(DOCK_HEIGHT-BASE_HEIGHT) as f32+
-                (BASE_HEIGHT as f32-size)/2.0;
-            (screen_x as f32)>=*x-4.0 &&
-            (screen_x as f32)<=*x+size+4.0 &&
-            ((screen_y-top) as f32)>=y-10.0 &&
-            ((screen_y-top) as f32)<=y+size+10.0
+            let icon_y=(self.height-BASE_HEIGHT) as f32+
+                (BASE_HEIGHT as f32-size)/2.0-self.settings.get("icon_y") as f32;
+            x>=**left-5.0 && x<=**left+size+5.0 &&
+            y>=icon_y-10.0 && y<=icon_y+size+10.0
         }).map(|(i,_)|i)
     }
+    fn apply_settings(&mut self) {
+        self.motion.resting=self.settings.get("base_size") as f32;
+        self.motion.maximum=self.settings.get("max_size") as f32;
+        self.motion.first_resting=Some(self.settings.get("start_size") as f32);
+        self.motion.gap=self.settings.get("gap") as f32;
+        self.motion.stiffness=self.settings.get("spring") as f32;
+        self.motion.damping=self.settings.get("damping") as f32;
+        self.motion.falloff=self.settings.get("falloff") as f32/100.0;
+        self.hover.timing=self.settings.timing();
+        self.height=self.settings.get("dock_height");
+        self.width=(self.screen_w*self.settings.get("dock_width")/100).max(140);
+        self.dock_left=(self.screen_w-self.width)/2+self.settings.get("dock_x");
+        self.dock_top=self.screen_h-self.height-self.settings.get("dock_y");
+        unsafe{
+            SetWindowPos(self.dock,null_mut(),self.dock_left,self.dock_top,
+                self.width,self.height,SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOOWNERZORDER);
+            SetLayeredWindowAttributes(self.dock,MAGIC_BG,
+                self.settings.get("icon_opacity") as u8,LWA_COLORKEY|LWA_ALPHA);
+            SetTimer(self.dock,TIMER_TICK,self.settings.get("frame_ms") as u32,None);
+            InvalidateRect(self.dock,null(),1);
+        }
+        self.preview.clear();
+        self.hover.force_close();
+    }
     fn refresh(&mut self){
-        let new_groups=scan_groups(self.dock,self.preview.hwnd);
-        // Do not reset animation if only an app title or window changes.
-        let keys_changed=new_groups.len()!=self.groups.len() ||
-            new_groups.iter().zip(&self.groups).any(|(a,b)|a.key!=b.key);
+        let mut new_groups=scan_groups(self.dock,self.preview.hwnd);
+        let mut old=std::mem::take(&mut self.groups);
+        let mut updated_order=false;
+        for new in &mut new_groups {
+            if let Some(existing)=old.iter_mut().find(|x|x.key==new.key) {
+                new.icon=std::mem::replace(&mut existing.icon,null_mut());
+                new.icon_owned=std::mem::replace(&mut existing.icon_owned,false);
+            } else {
+                let (icon,owned)=best_icon(
+                    new.windows.first().map(|x|x.hwnd).unwrap_or(null_mut()),&new.key);
+                new.icon=icon;
+                new.icon_owned=owned;
+            }
+            if !self.settings.order.iter().any(|k|k==&new.key){
+                self.settings.remember(&new.key);
+                updated_order=true;
+            }
+        }
+        new_groups.sort_by_key(|g|self.settings.order.iter()
+            .position(|k|k==&g.key).unwrap_or(usize::MAX));
+        let keys_changed=new_groups.len()!=old.len() ||
+            new_groups.iter().zip(&old).any(|(a,b)|a.key!=b.key);
         self.groups=new_groups;
+        if updated_order{save_settings(&self.settings);}
         if keys_changed {
-            self.motion.resize(self.groups.len());
+            self.motion.resize(self.groups.len()+1); // slot 0 = Start
             self.hover.force_close();
             self.preview.clear();
             self.current_icon=None;
@@ -274,9 +324,9 @@ impl App {
             let fg=GetForegroundWindow();
             if fg.is_null()||fg==self.dock||fg==self.preview.hwnd {return false}
             let mut bounds:RECT=std::mem::zeroed();
-            if GetWindowRect(fg,&mut bounds)==0 {return false}
+            if GetWindowRect(fg,&mut bounds)==0{return false}
             bounds.left<=0 && bounds.top<=0 &&
-            bounds.right>=self.width && bounds.bottom>=self.screen_h
+            bounds.right>=self.screen_w && bounds.bottom>=self.screen_h
         }
     }
     fn tick(&mut self){
@@ -286,29 +336,33 @@ impl App {
         let fullscreen=self.fullscreen_foreground();
         if fullscreen!=self.was_fullscreen {
             self.was_fullscreen=fullscreen;
-            unsafe{
-                ShowWindow(self.dock,if fullscreen{SW_HIDE}else{SW_SHOWNOACTIVATE});
-            }
-            if fullscreen {self.preview.clear();self.hover.force_close();}
+            unsafe{ShowWindow(self.dock,if fullscreen{SW_HIDE}else{SW_SHOWNOACTIVATE});}
+            if fullscreen{self.preview.clear();self.hover.force_close();}
         }
         if fullscreen{return;}
         let mut pt:POINT=unsafe{std::mem::zeroed()};
         unsafe{GetCursorPos(&mut pt);}
         let preview_active=unsafe{IsWindowVisible(self.preview.hwnd)!=0};
         let inside_preview=preview_active &&
-             pt.x>=self.preview.bounds.left && pt.x<self.preview.bounds.right &&
-             pt.y>=self.preview.bounds.top && pt.y<self.preview.bounds.bottom;
-        let icon=self.icon_at(pt.x,pt.y);
+            pt.x>=self.preview.bounds.left && pt.x<self.preview.bounds.right &&
+            pt.y>=self.preview.bounds.top && pt.y<self.preview.bounds.bottom;
+        let icon=self.screen_icon_at(pt.x,pt.y);
         let ms=now_ms(self.started);
         if inside_preview {self.hover.keep_open();}
-        else if let Some(i)=icon {self.hover.enter(i,ms);}
-        else {self.hover.leave(ms);}
+        else if let Some(i)=icon {
+            if i==0 {self.hover.leave(ms);}
+            else {self.hover.enter(i,ms);}
+        } else {self.hover.leave(ms);}
         match self.hover.tick(ms){
-            PreviewAction::Open(index)=>{
-                if let Some(group)=self.groups.get(index){
-                    let xs=self.motion.positions(self.width as f32);
-                    let anchor=xs[index] as i32+self.motion.sizes[index] as i32/2;
-                    self.preview.open(&group.windows,anchor,self.dock_top,self.width);
+            PreviewAction::Open(slot)=>{
+                if slot>0 {
+                    if let Some(group)=self.groups.get(slot-1){
+                        let xs=self.motion.positions(self.width as f32);
+                        let anchor=self.dock_left+xs[slot] as i32+
+                            self.motion.sizes[slot] as i32/2;
+                        self.preview.open(&group.windows,anchor,self.dock_top,
+                                          self.screen_w,&self.settings);
+                    }
                 }
             }
             PreviewAction::Close=>self.preview.clear(),
@@ -319,23 +373,68 @@ impl App {
             unsafe{InvalidateRect(self.dock,null(),1);}
         }
         let moving=self.motion.tick(icon,dt);
-        if moving {unsafe{InvalidateRect(self.dock,null(),1);}}
+        if moving{unsafe{InvalidateRect(self.dock,null(),1);}}
     }
-    fn click_dock(&mut self,x:i32,y:i32) {
-        let index=self.icon_at(x,y);
+    fn click_dock(&mut self,x:i32,y:i32){
+        let index=self.screen_icon_at(x,y);
         if let Some(i)=index{
-            if let Some(group)=self.groups.get(i) {
-                if group.windows.len()==1{
+            if i==0 {open_start_menu();return;}
+            if let Some(group)=self.groups.get(i-1){
+                if group.windows.len()==1 {
                     activate_window(group.windows[0].hwnd);
                     self.preview.clear();self.hover.force_close();
                 }else{
                     let xs=self.motion.positions(self.width as f32);
-                    self.preview.open(&group.windows,xs[i] as i32+
-                        self.motion.sizes[i] as i32/2,self.dock_top,self.width);
+                    self.preview.open(&group.windows,self.dock_left+xs[i] as i32+
+                        self.motion.sizes[i] as i32/2,self.dock_top,
+                        self.screen_w,&self.settings);
                     self.hover.enter(i,now_ms(self.started));
                 }
             }
         }
+    }
+    fn mouse_down(&mut self,x:i32,y:i32){
+        self.drag_start=self.screen_icon_at(x,y)
+            .map(|i|(i,x));
+    }
+    fn mouse_up(&mut self,x:i32,y:i32){
+        let origin=self.drag_start.take();
+        if let Some((from,down_x))=origin {
+            let target=self.screen_icon_at(x,y);
+            if from>0 && (x-down_x).abs()>=8 {
+                if let Some(to)=target {
+                    if to>0 && to!=from {
+                        if let Some(key)=self.groups.get(from-1).map(|g|g.key.clone()){
+                            let to_key=self.groups.get(to-1).map(|g|g.key.clone());
+                            if let Some(target_key)=to_key {
+                                self.settings.order.retain(|x|x!=&key);
+                                let pos=self.settings.order.iter().position(|x|x==&target_key)
+                                      .unwrap_or(self.settings.order.len());
+                                self.settings.order.insert(pos,key);
+                                save_settings(&self.settings);
+                                self.refresh();
+                            }
+                        }
+                    }
+                }
+                return;
+            }
+            self.click_dock(x,y);
+        }
+    }
+}
+
+fn open_start_menu(){
+    // User-initiated equivalent of pressing Windows key. Does not send
+    // undocumented messages to Explorer or require any taskbar HWND hook.
+    unsafe {
+        let mut input:[INPUT;2]=[std::mem::zeroed(),std::mem::zeroed()];
+        input[0].r#type=INPUT_KEYBOARD;
+        input[0].Anonymous.ki.wVk=VK_LWIN as u16;
+        input[1].r#type=INPUT_KEYBOARD;
+        input[1].Anonymous.ki.wVk=VK_LWIN as u16;
+        input[1].Anonymous.ki.dwFlags=KEYEVENTF_KEYUP;
+        SendInput(2,input.as_ptr(),std::mem::size_of::<INPUT>() as i32);
     }
 }
 
