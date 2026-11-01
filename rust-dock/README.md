@@ -26,9 +26,11 @@ are not modified.
 - **Taskbar order observation (v4):** a dedicated read-only Windows UIA COM
   thread observes native taskbar accessibility labels/positions every 6 seconds.
   Identifiable **running** apps are ordered by native positions, and unmatched
-  apps retain their saved manual order. This is partial: taskbar buttons can be
-  hidden from UIA by a theme/mod, labels may not map uniquely to executable
-  names, and pinned-but-not-running applications still are not shown.
+  apps retain their saved manual order. Existing pinned desktop .lnk files
+  with identifiable .exe targets are also represented when not running and
+  launch using their original shortcuts. This is partial: taskbar buttons can
+  be hidden from UIA by a theme/mod, labels may not map uniquely to executable
+  names, and packaged/AUMID-only pins are not yet fully supported.
 - **Animated magnification:** spring-based neighbor push-out with independently
   adjustable size, spacing, stiffness, damping and neighbor falloff.
 - **Pips (v4):** independently styled ordinary 1/2/3 indicators, currently
@@ -125,14 +127,14 @@ identity/order resolver; this script does **not** make the Rust dock match yet.
   shortcut icon locations and read-only UIA positions for matches, with safe
   executable-icon and saved-order fallbacks. This does NOT obtain raw icon
   pixels from Explorer, nor guarantee 1:1 parity for all AppUserModelIDs,
-  nonrunning pinned apps, invisible taskbar controls or native Start glyphs.
+  packaged/nonstandard pinned apps, invisible taskbar controls or native Start glyphs.
   Windows Start remains a drawn approximation. Manual UI test is mandatory.
 - **Do not hide your native taskbar icons while evaluating exact-order/icon parity**;
   keep the original visible as a reference for your manual tests.
 
 ## Further production work
 
-Complete Explorer taskbar order/identity, pinned-but-not-running applications,
+Complete Explorer taskbar order/identity, packaged/AUMID-only pinned applications,
 packaged/AUMID icon resources, shell-equivalent context menus and
 jump lists, exact native Start icon glyph parity, multi-monitor/DPI coverage,
 GPU Direct2D rendering and fully event-driven idle scheduling.
