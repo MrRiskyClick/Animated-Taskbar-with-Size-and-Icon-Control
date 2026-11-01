@@ -178,6 +178,29 @@ mod tests {
         for s in SPECS {assert!(s.min<=s.default&&s.default<=s.max);assert!(keys.insert(s.key));}
         assert!(SPECS.len()==54);
     }
+    #[test]fn distinct_pip_styles_round_trip(){
+        let mut x=Settings::default();
+        x.set("pip_shape",3);
+        x.set("pip_dot_diameter",12);
+        x.set("pip_radius",9);
+        x.set("focus_pip_mode",2);
+        x.set("focus_pip_red",11);
+        x.set("focus_pip_alpha",128);
+        x.set("line_pip_width",56);
+        x.set("line_pip_radius",7);
+        x.set("line_pip_shape",1);
+        x.set("line_pip_alpha",99);
+        let y=Settings::parse(&x.serialize());
+        for key in ["pip_shape","pip_dot_diameter","pip_radius",
+                    "focus_pip_mode","focus_pip_red","focus_pip_alpha",
+                    "line_pip_width","line_pip_radius","line_pip_shape","line_pip_alpha"]{
+            assert_eq!(x.get(key),y.get(key),"wrong pip style round trip: {key}");
+        }
+    }
+    #[test]fn old_four_plus_bar_width_migrates(){
+        let y=Settings::parse("pip_bar=59\n");
+        assert_eq!(y.get("line_pip_width"),59);
+    }
     #[test]fn settings_round_trip_and_bounds(){
         let mut x=Settings::default();
         x.set("preview_hover",30000);
