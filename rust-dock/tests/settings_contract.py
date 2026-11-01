@@ -21,8 +21,17 @@ assert 'save_settings(&app.settings)' in dock
 assert 'Native' not in [part for part in []] # no external shell dependency
 assert 'PrivateExtractIconsW' in dock
 assert 'fn open_task_view()' in dock
-assert 'WS_EX_TRANSPARENT' in dock and 'SetLayeredWindowAttributes(self.pips' in dock
-assert 'draw_pip_shape' in dock and 'settings.get("pip_alpha")' in dock
+# v4 uses three independent HWND overlays with dynamically selected alpha.
+# Do not require the removed v3 hard-coded SetLayeredWindowAttributes call.
+assert 'WS_EX_TRANSPARENT' in dock
+assert 'draw_pip_shape' in dock and 'draw_pip_category' in dock
+assert 'SetLayeredWindowAttributes(window,MAGIC_BG' in dock
+assert 'self.settings.get(alpha_key) as u8' in dock
+for layer in ('pips','focus_pips','line_pips'):
+    assert f'self.{layer}' in dock, layer
+    assert f'DestroyWindow({layer})' in dock, layer
+for alpha_key in ('pip_alpha','focus_pip_alpha','line_pip_alpha'):
+    assert f'"{alpha_key}"' in dock
 assert 'GetForegroundWindow()' in dock and 'self.foreground_group' in dock
 assert 'self.focus_pips' in dock and 'self.line_pips' in dock
 assert 'pip_dot_diameter' in dock and 'focus_pip_mode' in dock
