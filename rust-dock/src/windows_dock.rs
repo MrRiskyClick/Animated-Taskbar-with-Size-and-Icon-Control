@@ -534,19 +534,45 @@ unsafe fn draw_preview(hwnd:HWND){
     EndPaint(hwnd,&ps);
 }
 unsafe fn draw_start(hdc:HDC,x:i32,y:i32,size:i32){
-    // Vector four-pane logo: sharp at every size, not a bitmap upscale.
-    let brush=CreateSolidBrush(color(0,153,255));
-    let gap=(size/13).max(2);
+    // Two-tone four-pane Windows 11-style mark.
+    let gap=(size/30).max(1);
     let block=(size-gap)/2;
     for row in 0..2{
         for col in 0..2{
+            let brush=CreateSolidBrush(if col==0{color(0,181,229)}else{color(0,113,242)});
             let left=x+col*(block+gap);
             let top=y+row*(block+gap);
-            let rect=RECT{left,top,right:left+block,bottom:top+block};
-            FillRect(hdc,&rect,brush);
+            FillRect(hdc,&RECT{left,top,right:left+block,bottom:top+block},brush);
+            DeleteObject(brush);
         }
     }
-    DeleteObject(brush);
+}
+unsafe fn draw_task_view(hdc:HDC,x:i32,y:i32,size:i32){
+    let side=(size*19/28).max(9);
+    let shift=(size/5).max(3);
+    let top=y+(size-side-shift)/2;
+    let left=x+(size-side-shift)/2;
+    let back=CreateSolidBrush(color(119,128,143));
+    FillRect(hdc,&RECT{left,top,right:left+side,bottom:top+side},back);
+    DeleteObject(back);
+    let front=CreateSolidBrush(color(226,230,234));
+    FillRect(hdc,&RECT{left:left+shift,top:top+shift,
+        right:left+shift+side,bottom:top+shift+side},front);
+    DeleteObject(front);
+}
+unsafe fn draw_pip_shape(hdc:HDC,rc:RECT,settings:&Settings,brush:HBRUSH){
+    let old_brush=SelectObject(hdc,brush);
+    let old_pen=SelectObject(hdc,GetStockObject(NULL_PEN));
+    match settings.get("pip_shape"){
+        2=>{Ellipse(hdc,rc.left,rc.top,rc.right,rc.bottom);}
+        1=>{
+            let radius=(settings.get("pip_radius")*(rc.bottom-rc.top).max(1)/100).max(1);
+            RoundRect(hdc,rc.left,rc.top,rc.right,rc.bottom,radius*2,radius*2);
+        }
+        _=>{FillRect(hdc,&rc,brush);}
+    }
+    SelectObject(hdc,old_pen);
+    SelectObject(hdc,old_brush);
 }
 unsafe fn draw_running_pips(hdc:HDC,x:i32,y:i32,size:i32,
                              windows:usize,settings:&Settings){
@@ -555,21 +581,45 @@ unsafe fn draw_running_pips(hdc:HDC,x:i32,y:i32,size:i32,
     let pip_h=settings.get("pip_height");
     let pip_gap=settings.get("pip_gap");
     let bar_w=settings.get("pip_bar");
-    let py=(y+size+settings.get("pip_y")).max(0);
-    let brush=CreateSolidBrush(color(225,225,235));
+    let px=settings.get("pip_x");
+    let py=y+size+settings.get("pip_y");
+    let brush=CreateSolidBrush(color(settings.get("pip_red") as u8,
+        settings.get("pip_green") as u8,settings.get("pip_blue") as u8));
     if windows>=4{
-        let left=x+(size-bar_w)/2;
-        FillRect(hdc,&RECT{left,top:py,right:left+bar_w,bottom:py+pip_h},brush);
+        let left=x+(size-bar_w)/2+px;
+        draw_pip_shape(hdc,RECT{left,top:py,right:left+bar_w,bottom:py+pip_h},settings,brush);
     }else{
         let n=windows as i32;
         let total=pip_w*n+pip_gap*(n-1);
-        let first=x+(size-total)/2;
+        let first=x+(size-total)/2+px;
         for i in 0..n{
             let left=first+i*(pip_w+pip_gap);
-            FillRect(hdc,&RECT{left,top:py,right:left+pip_w,bottom:py+pip_h},brush);
+            draw_pip_shape(hdc,RECT{left,top:py,right:left+pip_w,bottom:py+pip_h},settings,brush);
         }
     }
     DeleteObject(brush);
+}
+unsafe fn draw_pips(hwnd:HWND){
+    let mut ps:PAINTSTRUCT=std::mem::zeroed();
+    let hdc=BeginPaint(hwnd,&mut ps);
+    if hdc.is_null(){return;}
+    let mut rc:RECT=std::mem::zeroed();
+    GetClientRect(hwnd,&mut rc);
+    let transparent=CreateSolidBrush(MAGIC_BG);
+    FillRect(hdc,&rc,transparent);
+    DeleteObject(transparent);
+    with_app(|app|{
+        let xs=app.motion.positions(app.width as f32);
+        for (index,group) in app.groups.iter().enumerate(){
+            let slot=index+2;
+            if slot>=xs.len()||slot>=app.motion.sizes.len(){continue;}
+            let size=app.motion.sizes[slot].round() as i32;
+            let x=xs[slot].round() as i32;
+            let y=app.height-16-size-app.settings.get("icon_y");
+            draw_running_pips(hdc,x,y,size,group.windows.len(),&app.settings);
+        }
+    });
+    EndPaint(hwnd,&ps);
 }
 unsafe fn draw_dock(hwnd:HWND){
     let mut ps:PAINTSTRUCT=std::mem::zeroed();
@@ -589,17 +639,26 @@ unsafe fn draw_dock(hwnd:HWND){
             let y=app.height-16-diameter-app.settings.get("icon_y");
             if index==0{
                 draw_start(hdc,x,y,diameter);
-            }else if let Some(group)=app.groups.get(index-1){
+            }else if index==1{
+                draw_task_view(hdc,x,y,diameter);
+            }else if let Some(group)=app.groups.get(index-2){
                 if !group.icon.is_null(){
                     DrawIconEx(hdc,x,y,group.icon,diameter,diameter,0,null_mut(),DI_NORMAL);
                 }
-                draw_running_pips(hdc,x,y,diameter,group.windows.len(),&app.settings);
             }
         }
     });
     EndPaint(hwnd,&ps);
 }
 
+unsafe extern "system" fn pips_proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRESULT{
+    match msg {
+        WM_PAINT=>{draw_pips(hwnd);0}
+        WM_ERASEBKGND=>1,
+        WM_NCHITTEST=>HTTRANSPARENT as isize,
+        _=>DefWindowProcW(hwnd,msg,w,l)
+    }
+}
 unsafe extern "system" fn dock_proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRESULT{
     match msg {
         WM_PAINT=>{draw_dock(hwnd);0}
