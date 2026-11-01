@@ -883,16 +883,43 @@ pub fn run()->Result<(),String>{
             DestroyWindow(pips);DestroyWindow(dock);
             return Err("Could not configure pip transparency".into());
         }
+        let focus_pips=CreateWindowExW(
+            WS_EX_LAYERED|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_TOPMOST|WS_EX_TRANSPARENT,
+            pips_class.as_ptr(),wide("ATB Focused Indicators").as_ptr(),WS_POPUP,
+            0,top,screen_w,DOCK_HEIGHT,null_mut(),null_mut(),module,null());
+        if focus_pips.is_null(){
+            DestroyWindow(pips);DestroyWindow(dock);
+            return Err("Could not create focus indicator overlay".into());
+        }
+        let line_pips=CreateWindowExW(
+            WS_EX_LAYERED|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_TOPMOST|WS_EX_TRANSPARENT,
+            pips_class.as_ptr(),wide("ATB Wide Indicators").as_ptr(),WS_POPUP,
+            0,top,screen_w,DOCK_HEIGHT,null_mut(),null_mut(),module,null());
+        if line_pips.is_null(){
+            DestroyWindow(focus_pips);DestroyWindow(pips);DestroyWindow(dock);
+            return Err("Could not create 4+ indicator overlay".into());
+        }
+        for window in [focus_pips,line_pips]{
+            if SetLayeredWindowAttributes(window,MAGIC_BG,255,LWA_COLORKEY|LWA_ALPHA)==0{
+                DestroyWindow(line_pips);DestroyWindow(focus_pips);
+                DestroyWindow(pips);DestroyWindow(dock);
+                return Err("Could not configure indicator opacity".into());
+            }
+        }
         let preview=CreateWindowExW(
             WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,
             preview_class.as_ptr(),wide("ATB DWM Previews").as_ptr(),WS_POPUP,
             0,0,50,50,null_mut(),null_mut(),module,null());
-        if preview.is_null(){DestroyWindow(pips);DestroyWindow(dock);return Err("Could not create DWM preview window".into());}
+        if preview.is_null(){
+            DestroyWindow(line_pips);DestroyWindow(focus_pips);
+            DestroyWindow(pips);DestroyWindow(dock);
+            return Err("Could not create DWM preview window".into());
+        }
         let settings=load_settings();
         let timing=settings.timing();
         let start=Instant::now();
         APP.with(|cell|*cell.borrow_mut()=Some(App{
-            dock,pips,preview:Preview{hwnd:preview,thumbs:vec![],
+            dock,pips,focus_pips,line_pips,foreground_group:None,preview:Preview{hwnd:preview,thumbs:vec![],
                 items:vec![],bounds:RECT::default(),cols:0,
                 tile_w:212,tile_h:160,gap:12},
             groups:vec![],motion:SpringDock::new(2),
@@ -908,8 +935,12 @@ pub fn run()->Result<(),String>{
         });
         ShowWindow(dock,SW_SHOWNOACTIVATE);
         ShowWindow(pips,SW_SHOWNOACTIVATE);
+        ShowWindow(line_pips,SW_SHOWNOACTIVATE);
+        ShowWindow(focus_pips,SW_SHOWNOACTIVATE);
         UpdateWindow(dock);
         UpdateWindow(pips);
+        UpdateWindow(line_pips);
+        UpdateWindow(focus_pips);
         // The settings window controls the hover/animation interval live.
         SetTimer(dock,TIMER_REFRESH,2000,None); // prototype fallback until WinEventHook
         let mut msg:MSG=std::mem::zeroed();
@@ -921,6 +952,8 @@ pub fn run()->Result<(),String>{
         with_app(|app|app.preview.clear());
         APP.with(|cell|*cell.borrow_mut()=None);
         DestroyWindow(preview);
+        DestroyWindow(focus_pips);
+        DestroyWindow(line_pips);
         DestroyWindow(pips);
         DestroyWindow(dock);
         UnregisterClassW(pips_class.as_ptr(),module);
