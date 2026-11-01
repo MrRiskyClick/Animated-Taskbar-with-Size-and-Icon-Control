@@ -152,6 +152,9 @@ struct Preview {
     items: Vec<WindowItem>,
     bounds: RECT,
     cols:usize,
+    tile_w:i32,
+    tile_h:i32,
+    gap:i32,
 }
 impl Preview {
     fn clear(&mut self){
@@ -162,18 +165,21 @@ impl Preview {
         self.items.clear();
     }
     fn open(&mut self,items:&[WindowItem],anchor_x:i32,dock_top:i32,
-            screen_w:i32) {
+            screen_w:i32,settings:&Settings) {
         self.clear();
         if items.is_empty(){return;}
         self.items.extend(items.iter().take(MAX_WINDOWS_PER_GROUP).cloned());
-        self.cols=self.items.len().min(3);
+        self.tile_w=settings.get("preview_width");
+        self.tile_h=settings.get("preview_height");
+        self.gap=settings.get("preview_gap");
+        self.cols=self.items.len().min(settings.get("preview_columns") as usize);
         let rows=self.items.len().div_ceil(self.cols);
-        let w=PREVIEW_PAD*2+(self.cols as i32)*PREVIEW_TILE_W+
-              (self.cols.saturating_sub(1) as i32)*PREVIEW_GAP;
-        let h=PREVIEW_PAD*2+(rows as i32)*PREVIEW_TILE_H+
-              (rows.saturating_sub(1) as i32)*PREVIEW_GAP;
+        let w=PREVIEW_PAD*2+(self.cols as i32)*self.tile_w+
+              (self.cols.saturating_sub(1) as i32)*self.gap;
+        let h=PREVIEW_PAD*2+(rows as i32)*self.tile_h+
+              (rows.saturating_sub(1) as i32)*self.gap;
         let x=(anchor_x-w/2).clamp(0,(screen_w-w).max(0));
-        let y=(dock_top-h-8).max(0);
+        let y=(dock_top-h-settings.get("preview_offset")).max(0);
         self.bounds=RECT{left:x,top:y,right:x+w,bottom:y+h};
         unsafe{
             SetWindowPos(self.hwnd,HWND_TOPMOST,x,y,w,h,
@@ -186,13 +192,13 @@ impl Preview {
                     || thumb==0 {continue;}
                 let col=index%self.cols;
                 let row=index/self.cols;
-                let left=PREVIEW_PAD+(col as i32)*(PREVIEW_TILE_W+PREVIEW_GAP);
-                let top=PREVIEW_PAD+(row as i32)*(PREVIEW_TILE_H+PREVIEW_GAP);
+                let left=PREVIEW_PAD+(col as i32)*(self.tile_w+self.gap);
+                let top=PREVIEW_PAD+(row as i32)*(self.tile_h+self.gap);
                 let mut props:DWM_THUMBNAIL_PROPERTIES=std::mem::zeroed();
                 props.dwFlags=DWM_TNP_RECTDESTINATION|DWM_TNP_VISIBLE|
                               DWM_TNP_OPACITY|DWM_TNP_SOURCECLIENTAREAONLY;
                 props.rcDestination=RECT{left:left+4,top:top+28,
-                    right:left+PREVIEW_TILE_W-4,bottom:top+PREVIEW_TILE_H-8};
+                    right:left+self.tile_w-4,bottom:top+self.tile_h-8};
                 props.opacity=255;
                 props.fVisible=1;
                 props.fSourceClientAreaOnly=0;
@@ -206,16 +212,16 @@ impl Preview {
         if self.cols==0 || x<PREVIEW_PAD || y<PREVIEW_PAD{return None}
         let xx=x-PREVIEW_PAD;
         let yy=y-PREVIEW_PAD;
-        let col=xx/(PREVIEW_TILE_W+PREVIEW_GAP);
-        let row=yy/(PREVIEW_TILE_H+PREVIEW_GAP);
+        let col=xx/(self.tile_w+self.gap);
+        let row=yy/(self.tile_h+self.gap);
         if col<0 || row<0{return None;}
-        let cell_x=xx%(PREVIEW_TILE_W+PREVIEW_GAP);
-        let cell_y=yy%(PREVIEW_TILE_H+PREVIEW_GAP);
-        if cell_x>=PREVIEW_TILE_W || cell_y>=PREVIEW_TILE_H {return None}
+        let cell_x=xx%(self.tile_w+self.gap);
+        let cell_y=yy%(self.tile_h+self.gap);
+        if cell_x>=self.tile_w || cell_y>=self.tile_h {return None}
         let index=(row as usize)*self.cols+col as usize;
         if index>=self.items.len(){return None}
         // Red X in the last 24 pixels at the top-right corner of each tile.
-        let close=cell_y<27 && cell_x>PREVIEW_TILE_W-27;
+        let close=cell_y<27 && cell_x>self.tile_w-27;
         Some((index,close))
     }
 }
