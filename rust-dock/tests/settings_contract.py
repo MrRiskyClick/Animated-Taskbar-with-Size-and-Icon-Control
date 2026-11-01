@@ -12,7 +12,7 @@ assert len(keys)==26 and len(set(keys))==26,keys
 for key in keys:
     assert f'get("{key}")' in dock or f'get("{key}")' in settings, key
 for part in ('Layout','Icons','Motion','Indicators','Previews'):
-    assert re.search(r'item!\\([^\\n]*,'+part+r',',settings),part
+    assert f',{part},' in settings, part
 assert 'TBM_SETPOS' in ui
 assert 'WM_HSCROLL' in ui
 assert 'settings_slider_changed(index,current)' in ui
