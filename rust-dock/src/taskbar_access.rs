@@ -29,24 +29,44 @@ fn observe(automation:&IUIAutomation)->Vec<String>{
         let sw=GetSystemMetrics(SM_CXSCREEN);
         let sh=GetSystemMetrics(SM_CYSCREEN);
         if sw<200||sh<200{return Vec::new();}
-        let mut buttons=Vec::<(i32,String)>::new();
-        for i in 0..count.min(350) {
+        // Windows 11 taskbar uses XAML islands. Read actual accessibility
+        // buttons/list-items, NOT generic parent containers or static labels.
+        // Otherwise equal-x de-duplication chooses an arbitrary parent name.
+        let mut buttons=Vec::<(i32,i32,String)>::new();
+        for i in 0..count.min(1200) {
             let Ok(element)=items.GetElement(i) else{continue};
+            let Ok(kind)=element.CurrentControlType() else{continue};
+            // UIA_ButtonControlTypeId=50000, UIA_ListItemControlTypeId=50007,
+            // UIA_TabItemControlTypeId=50019; ignore nested images/text/frames.
+            if kind!=50000 && kind!=50007 && kind!=50019{continue;}
             let Ok(name)=element.CurrentName() else{continue};
-            let name=name.to_string();
-            if name.trim().is_empty(){continue;}
+            let name=name.to_string().trim().to_string();
+            if name.is_empty(){continue;}
             let Ok(rect)=element.CurrentBoundingRectangle() else{continue};
             let w=rect.right-rect.left;
             let h=rect.bottom-rect.top;
-            // Observe only primary, bottom-aligned taskbar-size elements.
-            if w<18||w>190||h<16||h>100||
+            if w<18||w>190||h<16||h>115||
                 rect.left<0||rect.right>sw||
-                rect.top<sh-160||rect.bottom>sh+5{continue;}
-            buttons.push((rect.left,name));
+                rect.top<sh-180||rect.bottom>sh+6{continue;}
+            // Ignore system tray controls and obvious non-app controls.
+            let lower=name.to_ascii_lowercase();
+            if lower=="start"||lower=="task view"||lower=="search"||
+                lower=="widgets"||lower=="notification center"||
+                lower=="show desktop"||lower=="taskbar"||
+                lower.starts_with("system tray") {continue;}
+            let rank=if kind==50000{0}else if kind==50019{1}else{2};
+            buttons.push((rect.left,rank,name));
         }
-        buttons.sort_by_key(|v|v.0);
-        buttons.dedup_by(|a,b|a.0==b.0);
-        buttons.into_iter().map(|(_,name)|name).collect()
+        // Prefer the actual Button peer over an adjacent list-item peer.
+        buttons.sort_by_key(|v|(v.0,v.1));
+        let mut ordered=Vec::new();
+        let mut last_x=None;
+        for (x,_,name) in buttons {
+            if last_x==Some(x){continue;}
+            last_x=Some(x);
+            ordered.push(name);
+        }
+        ordered
     }
 }
 pub fn spawn()->Receiver<Vec<String>>{
