@@ -38,7 +38,7 @@ unsafe fn font(hwnd:HWND){
 }
 unsafe fn btn(parent:HWND,text:&str,id:usize,x:i32,y:i32,w:i32,h:i32)->HWND{
     let window=CreateWindowExW(0,wide("BUTTON").as_ptr(),wide(text).as_ptr(),
-        WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,
+        WS_CHILD|WS_VISIBLE|WS_TABSTOP|(BS_PUSHBUTTON as u32),
         x,y,w,h,parent,id as *mut _,GetModuleHandleW(null()),null());
     font(window);
     window
@@ -165,7 +165,7 @@ unsafe extern "system" fn proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRESULT{
                     ui.values.iter().find(|(_,candidate,_)|*candidate==track)
                         .map(|(index,_,_)|*index)));
                 if let Some(index)=index{
-                    let current=SendMessageW(track,TBM_GETPOS,0,0) as i32;
+                    let current=SendMessageW(track,WM_USER,0,0) as i32;
                     settings_slider_changed(index,current);
                 }
             }
