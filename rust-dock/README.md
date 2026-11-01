@@ -1,4 +1,4 @@
-# ATB Rust Dock v0.4 / Desktop v4 — Native Windows developer preview
+# ATB Rust Dock v0.5 / Desktop v5 — Native Windows developer preview
 
 A standalone Rust/Win32 dock built and tested in GitHub Actions. It does NOT
 replace, resize, alter the work-area reservation of, or inject into the
@@ -9,6 +9,31 @@ service, administrator access or explorer.exe restart.
 disabled. This standalone executable does not require it. Your working
 `ATB Hide Taskbar Buttons` mod and existing `SimplyTransparent` theme
 are not modified.
+
+## v5 — Native button order + supplied system icons (developer preview)
+
+- The Windows Start and Task View icons use the user's supplied artwork,
+  converted to embedded PNG-backed ICO resources. The original Start vector
+  is preserved in `assets/WindowsLogo.svg`. The Rust executable uses
+  `CreateIconFromResourceEx` and draws the embedded icons with
+  `DrawIconEx` instead of an estimated four-pane logo or two rectangles.
+  These are supplied art files, not a pixel readback from Explorer.
+- Read-only UI Automation now filters to actual Button/ListItem/TabItem peers
+  instead of arbitrary descendants; taskbar names are sorted by position.
+  Distinct matching uses the pinned shortcut's display name when available,
+  with a conservative fallback and no Explorer manipulation.
+- Pinned shortcut icons are looked up through `IShellLink::GetIconLocation`;
+  `SHGetFileInfoW` is the secondary shell resolver if the shortcut's explicit
+  resource cannot be extracted, ahead of the executable's first resource.
+- Right click dock -> **Export native taskbar order report...** writes
+  `%LOCALAPPDATA%\\ATBRustDock\\taskbar-order-report.txt`, including names
+  and the actual matched order. It is generated ONLY on demand and contains
+  app paths: review before sharing. This is the next diagnostic if icons
+  or order still differ.
+- **Limitations:** UIA peers may not be exposed by taskbar-hiding mods; AUMID
+  and packaged apps may not be represented by ordinary .lnk target paths.
+  Exact process/window-to-taskbar matching is not guaranteed until validated
+  against the user's live report. Only the user performs actual visual testing.
 
 ## Features implemented
 
@@ -70,10 +95,10 @@ in the same file. The original old two timing properties are migrated.
 
 ## Versioned desktop updates
 
-**v4 is the short display name of Rust package version 0.4.0.** The CI builds
-from `Cargo.toml` and names the artifact `ATB-Dock-v4`, containing
-`ATB-Dock-v4.exe` and `build-info.json`. Each future release increments
-the package version (0.5.0 -> v5, etc.) so executable and Desktop folder names
+**v5 is the short display name of Rust package version 0.5.0.** The CI builds
+from `Cargo.toml` and names the artifact `ATB-Dock-v5`, containing
+`ATB-Dock-v5.exe` and `build-info.json`. Each future release increments
+the package version (0.6.0 -> v6, etc.) so executable and Desktop folder names
 update automatically. Rebuilds within the same numbered version retain that
 name, but `build-info.json` records the exact Git commit, run ID and SHA-256.
 
@@ -89,7 +114,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File $updater
 The updater requires a *successful build for the exact current PR head* before
 touching the old installation. It checks the manifest commit and EXE SHA-256,
 closes only the standalone ATB process, renames an old `ATB-Dock-v0.2` Desktop
-folder to `ATB-Dock-v4` when appropriate, copies `ATB-Dock-v4.exe`, removes
+folder to `ATB-Dock-v5` when appropriate, copies `ATB-Dock-v5.exe`, removes
 superseded ATB executable names, and prints the version and commit. If an old
 folder has non-ATB files it is retained. No auto-run; the user starts the EXE
 manually. No Windhawk/Explorer mods are changed.
