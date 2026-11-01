@@ -597,42 +597,76 @@ unsafe fn draw_task_view(hdc:HDC,x:i32,y:i32,size:i32){
         right:left+shift+side,bottom:top+shift+side},front);
     DeleteObject(front);
 }
-unsafe fn draw_pip_shape(hdc:HDC,rc:RECT,settings:&Settings,brush:HBRUSH){
+// The three pip layers are separate layered HWNDs so each category has its
+// own alpha channel. GDI shape radius is measured in *physical pixels*.
+unsafe fn draw_pip_shape(hdc:HDC,rect:RECT,shape:i32,radius:i32,brush:HBRUSH){
+    let width=(rect.right-rect.left).max(0);
+    let height=(rect.bottom-rect.top).max(0);
+    if width==0 || height==0{return;}
+    if shape==0 || radius<=0 && shape==1 {
+        FillRect(hdc,&rect,brush);
+        return;
+    }
     let old_brush=SelectObject(hdc,brush);
     let old_pen=SelectObject(hdc,GetStockObject(NULL_PEN));
-    match settings.get("pip_shape"){
-        2=>{Ellipse(hdc,rc.left,rc.top,rc.right,rc.bottom);}
-        1=>{
-            let radius=(settings.get("pip_radius")*(rc.bottom-rc.top).max(1)/100).max(1);
-            RoundRect(hdc,rc.left,rc.top,rc.right,rc.bottom,radius*2,radius*2);
-        }
-        _=>{FillRect(hdc,&rc,brush);}
+    if shape==2 || shape==3 {
+        Ellipse(hdc,rect.left,rect.top,rect.right,rect.bottom);
+    } else {
+        let r=radius.clamp(0,(width.min(height))/2);
+        if r==0{FillRect(hdc,&rect,brush);}
+        else {RoundRect(hdc,rect.left,rect.top,rect.right,rect.bottom,r*2,r*2);}
     }
     SelectObject(hdc,old_pen);
     SelectObject(hdc,old_brush);
 }
-unsafe fn draw_running_pips(hdc:HDC,x:i32,y:i32,size:i32,
-                             windows:usize,settings:&Settings){
-    if windows==0{return;}
-    let pip_w=settings.get("pip_width");
-    let pip_h=settings.get("pip_height");
-    let pip_gap=settings.get("pip_gap");
-    let bar_w=settings.get("pip_bar");
-    let px=settings.get("pip_x");
-    let py=y+size+settings.get("pip_y");
-    let brush=CreateSolidBrush(color(settings.get("pip_red") as u8,
-        settings.get("pip_green") as u8,settings.get("pip_blue") as u8));
-    if windows>=4{
-        let left=x+(size-bar_w)/2+px;
-        draw_pip_shape(hdc,RECT{left,top:py,right:left+bar_w,bottom:py+pip_h},settings,brush);
-    }else{
-        let n=windows as i32;
-        let total=pip_w*n+pip_gap*(n-1);
-        let first=x+(size-total)/2+px;
-        for i in 0..n{
-            let left=first+i*(pip_w+pip_gap);
-            draw_pip_shape(hdc,RECT{left,top:py,right:left+pip_w,bottom:py+pip_h},settings,brush);
-        }
+unsafe fn draw_pip_category(hdc:HDC,x:i32,y:i32,icon_size:i32,
+                            count:usize,settings:&Settings,category:u8){
+    if count==0{return;}
+    let (mut width,mut height,dx,dy,mut shape,radius,mut n,gap,r,g,b)=match category{
+        // Regular running pips (1-3 windows).
+        0=>(settings.get("pip_width"),settings.get("pip_height"),
+            settings.get("pip_x"),settings.get("pip_y"),
+            settings.get("pip_shape"),settings.get("pip_radius"),
+            count.min(3) as i32,settings.get("pip_gap"),
+            settings.get("pip_red"),settings.get("pip_green"),settings.get("pip_blue")),
+        // Foreground app style always takes priority over its normal/4+ style.
+        1=>{
+            let mode=settings.get("focus_pip_mode");
+            let n=if mode==0 && count<=3 {count as i32}else{1};
+            let shape=if mode==2 {3}else{settings.get("focus_pip_shape")};
+            (settings.get("focus_pip_width"),settings.get("focus_pip_height"),
+                settings.get("focus_pip_x"),settings.get("focus_pip_y"),
+                shape,settings.get("focus_pip_radius"),n,settings.get("pip_gap"),
+                settings.get("focus_pip_red"),settings.get("focus_pip_green"),
+                settings.get("focus_pip_blue"))
+        },
+        // Independently styled 4+ running-window line.
+        _=>(settings.get("line_pip_width"),settings.get("line_pip_height"),
+            settings.get("line_pip_x"),settings.get("line_pip_y"),
+            settings.get("line_pip_shape"),settings.get("line_pip_radius"),1,0,
+            settings.get("line_pip_red"),settings.get("line_pip_green"),
+            settings.get("line_pip_blue"))
+    };
+    if category==0 && shape==3 {
+        width=settings.get("pip_dot_diameter");
+        height=width;
+    }
+    if shape==3 && category!=0 {
+        // A dot must be circular, not a stretched ellipse; user adjusts size
+        // through the corresponding height/width sliders.
+        width=width.min(height);
+        height=width;
+    }
+    if category==1 && settings.get("focus_pip_mode")==2 {n=1;shape=3;}
+    let total=width*n+gap*(n-1).max(0);
+    let start=x+(icon_size-total)/2+dx;
+    let top=y+icon_size+dy;
+    let brush=CreateSolidBrush(color(r as u8,g as u8,b as u8));
+    for j in 0..n {
+        let left=start+j*(width+gap);
+        draw_pip_shape(hdc,RECT{
+            left,top,right:left+width,bottom:top+height
+        },shape,radius,brush);
     }
     DeleteObject(brush);
 }
@@ -646,14 +680,19 @@ unsafe fn draw_pips(hwnd:HWND){
     FillRect(hdc,&rc,transparent);
     DeleteObject(transparent);
     with_app(|app|{
+        let layer=if hwnd==app.focus_pips{1u8}
+            else if hwnd==app.line_pips{2u8}else{0u8};
         let xs=app.motion.positions(app.width as f32);
         for (index,group) in app.groups.iter().enumerate(){
             let slot=index+2;
             if slot>=xs.len()||slot>=app.motion.sizes.len(){continue;}
+            let focused=app.foreground_group.as_deref()==Some(group.key.as_str());
+            let selected_layer=if focused{1}else if group.windows.len()>3{2}else{0};
+            if layer!=selected_layer{continue;}
             let size=app.motion.sizes[slot].round() as i32;
             let x=xs[slot].round() as i32;
             let y=app.height-16-size-app.settings.get("icon_y");
-            draw_running_pips(hdc,x,y,size,group.windows.len(),&app.settings);
+            draw_pip_category(hdc,x,y,size,group.windows.len(),&app.settings,layer);
         }
     });
     EndPaint(hwnd,&ps);
