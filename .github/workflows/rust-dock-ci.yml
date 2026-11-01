@@ -22,6 +22,8 @@ jobs:
           workspaces: rust-dock
       - name: Unit tests (no display APIs)
         run: cargo test --manifest-path rust-dock/Cargo.toml --verbose
+      - name: Validate 26 functional slider contracts and Win32 safety
+        run: python3 rust-dock/tests/settings_contract.py
 
   win32-build:
     name: Build native Win32/DWM dock
