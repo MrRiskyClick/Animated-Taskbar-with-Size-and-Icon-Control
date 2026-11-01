@@ -84,12 +84,13 @@ pub struct SpringDock {
     pub stiffness: f32,
     pub damping: f32,
     pub falloff: f32,
+    pub first_resting: Option<f32>,
 }
 impl SpringDock {
     pub fn new(count: usize) -> Self {
         Self { sizes: vec![40.0; count], velocities: vec![0.0; count],
                resting: 40.0, maximum: 72.0, gap: 12.0,
-               stiffness:190.0,damping:19.0,falloff:0.68 }
+               stiffness:190.0,damping:19.0,falloff:0.68,first_resting:None }
     }
     pub fn resize(&mut self, count: usize) {
         self.sizes.resize(count, self.resting);
@@ -102,7 +103,8 @@ impl SpringDock {
             .zip(self.velocities.iter_mut()).enumerate() {
             let distance = focused.map(|f| (f as isize-i as isize).unsigned_abs() as f32);
             let weight = distance.map(|d| (-self.falloff*d*d).exp()).unwrap_or(0.0);
-            let target = self.resting + (self.maximum - self.resting)*weight;
+            let resting=if i==0 {self.first_resting.unwrap_or(self.resting)} else {self.resting};
+            let target = resting + (self.maximum - resting)*weight;
             // Critically damped spring; no overlapping because final layout
             // accumulates the individual animated widths, not fixed centers.
             *velocity += (target - *size) * self.stiffness * dt;
