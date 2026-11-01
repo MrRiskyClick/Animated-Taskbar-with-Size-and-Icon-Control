@@ -15,7 +15,7 @@ use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::*;
 use windows_sys::Win32::System::Threading::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
-use windows_sys::Win32::UI::Shell::ShellExecuteW;
+use windows_sys::Win32::UI::Shell::{ShellExecuteW,SHGetFileInfoW,SHFILEINFOW,SHGFI_ICON,SHGFI_LARGEICON};
 
 use crate::state::{Hover, PreviewAction, SpringDock};
 use crate::settings::Settings;
@@ -115,6 +115,16 @@ fn best_icon(hwnd:HWND,key:&str,pinned:&[shell_icons::PinnedIcon])->(HICON,bool)
             let found=PrivateExtractIconsW(native.as_ptr(),pin.index,256,256,
                     &mut icon,null_mut(),1,0);
             if found==1 && !icon.is_null(){return (icon,true);}
+            // When the shortcut does not specify its own resource, let the
+            // Windows Shell resolve its assigned icon, as it does for the
+            // shortcut's Change Icon property and shell image cache.
+            let mut info:SHFILEINFOW=std::mem::zeroed();
+            let shortcut=wide(&pin.shortcut);
+            if SHGetFileInfoW(shortcut.as_ptr(),0,&mut info,
+                std::mem::size_of::<SHFILEINFOW>() as u32,
+                SHGFI_ICON|SHGFI_LARGEICON)!=0 && !info.hIcon.is_null(){
+                return (info.hIcon,true);
+            }
         }
         if !key.starts_with("pid:") {
             let mut icon:HICON=null_mut();
