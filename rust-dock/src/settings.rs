@@ -34,7 +34,7 @@ macro_rules! item {($key:literal,$name:literal,$help:literal,$cat:ident,$min:lit
     min:$min,max:$max,default:$def,suffix:$suf
 }};}
 // Slider values are integers, making INI and UI robust without a framework.
-pub const SPECS:[SettingSpec;54]=[
+pub const SPECS:[SettingSpec;55]=[
 item!("dock_height","Dock visual height","Height of the floating icon surface. The real taskbar stays unchanged.",Layout,72,240,112,"px"),
 item!("dock_width","Dock width","Percentage of primary monitor width used for the icon surface.",Layout,30,100,100,"%"),
 item!("dock_x","Horizontal offset","Move the entire icon row relative to screen center.",Layout,-300,300,0,"px"),
@@ -54,13 +54,14 @@ item!("pip_height","Indicator height","Height of indicators below running apps."
 item!("pip_y","Indicator vertical offset","Move indicators up/down relative to their icons.",Indicators,-48,48,3,"px"),
 item!("pip_gap","Indicator spacing","Distance between 2 or 3 running-window indicators.",Indicators,0,20,4,"px"),
 item!("pip_bar","4+ windows bar width","Width of the long indicator for four or more windows.",Indicators,12,80,24,"px"),
-item!("pip_x","Horizontal offset","Move all running indicators left/right relative to icon center.",PipStyle,-60,60,0,"px"),
+item!("pip_x","Horizontal offset","Move all running indicators left/right relative to icon center.",Indicators,-60,60,0,"px"),
 item!("pip_red","Red channel","Adjust indicator RGB color: red component.",PipStyle,0,255,225,"/255"),
 item!("pip_green","Green channel","Adjust indicator RGB color: green component.",PipStyle,0,255,225,"/255"),
 item!("pip_blue","Blue channel","Adjust indicator RGB color: blue component.",PipStyle,0,255,235,"/255"),
 item!("pip_alpha","Indicator opacity","Independent indicator opacity: 0 transparent, 255 opaque.",PipStyle,0,255,255,"/255"),
 item!("pip_shape","Indicator shape","0 = rectangle, 1 = round rect, 2 = ellipse, 3 = dot.",PipStyle,0,3,1,""),
 item!("pip_radius","Corner radius","Round-rect radius in pixels (visible only with enough height).",PipStyle,0,24,2,"px"),
+item!("pip_dot_diameter","Dot diameter","Exact circular dot diameter, independent of width/height.",PipStyle,2,24,6,"px"),
 item!("focus_pip_mode","Focused indicator type","0 = same number of pips, 1 = single line, 2 = single dot.",FocusGeometry,0,2,1,""),
 item!("focus_pip_shape","Focused pip shape","0 = square, 1 = rounded, 2 = ellipse, 3 = dot.",FocusGeometry,0,3,1,""),
 item!("focus_pip_width","Focused width","Focused pip or focus line width.",FocusGeometry,2,80,24,"px"),
@@ -169,7 +170,7 @@ mod tests {
     #[test]fn sliders_all_have_valid_ranges_and_distinct_keys(){
         let mut keys=std::collections::HashSet::new();
         for s in SPECS {assert!(s.min<=s.default&&s.default<=s.max);assert!(keys.insert(s.key));}
-        assert!(SPECS.len()==54);
+        assert!(SPECS.len()==55);
     }
     #[test]fn settings_round_trip_and_bounds(){
         let mut x=Settings::default();
