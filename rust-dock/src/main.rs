@@ -1,6 +1,8 @@
 mod taskbar_matching;
 #[cfg(windows)]
 mod taskbar_access;
+#[cfg(windows)]
+mod shell_icons;
 mod state;
 mod settings;
 
