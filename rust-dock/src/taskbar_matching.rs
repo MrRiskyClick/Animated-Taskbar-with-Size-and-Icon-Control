@@ -12,6 +12,7 @@ pub fn native_rank(key:&str,label:&str,native:&[String])->Option<usize>{
     let shortcut=normalized(label.trim_end_matches(".lnk").trim_end_matches(".exe"));
     let alias=match stem.as_str(){
         "msedge"=>"microsoftedge",
+        "chrome"=>"googlechrome",
         "explorer"=>"fileexplorer",
         "code"=>"visualstudiocode",
         "wt"=>"windowsterminal",
