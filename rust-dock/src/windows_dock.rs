@@ -99,9 +99,9 @@ fn best_icon(hwnd:HWND,key:&str)->(HICON,bool){
         (icon,false)
     }
 }
-fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND,pips_hwnd:HWND)->Vec<Group>{
+fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND,pips_hwnd:HWND,focus_hwnd:HWND,line_hwnd:HWND)->Vec<Group>{
     struct Scan{
-        own:[HWND;3],
+        own:[HWND;5],
         groups:Vec<Group>,
         positions:HashMap<String,usize>
     }
@@ -139,7 +139,7 @@ fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND,pips_hwnd:HWND)->Vec<Group>{
         }
         1
     }
-    let mut scan=Scan{own:[dock_hwnd,preview_hwnd,pips_hwnd],
+    let mut scan=Scan{own:[dock_hwnd,preview_hwnd,pips_hwnd,focus_hwnd,line_hwnd],
                       groups:Vec::new(),positions:HashMap::new()};
     unsafe {EnumWindows(Some(each),&mut scan as *mut _ as isize);}
     scan.groups
@@ -229,6 +229,9 @@ impl Preview {
 struct App{
     dock:HWND,
     pips:HWND,
+    focus_pips:HWND,
+    line_pips:HWND,
+    foreground_group:Option<String>,
     preview:Preview,
     groups:Vec<Group>,
     motion:SpringDock,
@@ -285,10 +288,17 @@ impl App {
             SetLayeredWindowAttributes(self.dock,MAGIC_BG,
                 self.settings.get("icon_opacity") as u8,LWA_COLORKEY|LWA_ALPHA);
             // Our own separate, click-through pip HWND supports independent alpha.
-            SetWindowPos(self.pips,HWND_TOPMOST,self.dock_left,self.dock_top,
-                self.width,self.height,SWP_NOACTIVATE|SWP_NOOWNERZORDER);
-            SetLayeredWindowAttributes(self.pips,MAGIC_BG,
-                self.settings.get("pip_alpha") as u8,LWA_COLORKEY|LWA_ALPHA);
+            for (window,alpha_key) in [
+                (self.pips,"pip_alpha"),
+                (self.focus_pips,"focus_pip_alpha"),
+                (self.line_pips,"line_pip_alpha"),
+            ] {
+                SetWindowPos(window,HWND_TOPMOST,self.dock_left,self.dock_top,
+                    self.width,self.height,SWP_NOACTIVATE|SWP_NOOWNERZORDER);
+                SetLayeredWindowAttributes(window,MAGIC_BG,
+                    self.settings.get(alpha_key) as u8,LWA_COLORKEY|LWA_ALPHA);
+                InvalidateRect(window,null(),1);
+            }
             SetTimer(self.dock,TIMER_TICK,self.settings.get("frame_ms") as u32,None);
             InvalidateRect(self.dock,null(),1);
             InvalidateRect(self.pips,null(),1);
@@ -297,7 +307,7 @@ impl App {
         self.hover.force_close();
     }
     fn refresh(&mut self){
-        let mut new_groups=scan_groups(self.dock,self.preview.hwnd,self.pips);
+        let mut new_groups=scan_groups(self.dock,self.preview.hwnd,self.pips,self.focus_pips,self.line_pips);
         let mut old=std::mem::take(&mut self.groups);
         let mut updated_order=false;
         for new in &mut new_groups {
@@ -324,9 +334,10 @@ impl App {
                 a.windows.len()!=b.windows.len() ||
                 a.windows.iter().zip(&b.windows).any(|(x,y)|x.hwnd!=y.hwnd));
         self.groups=new_groups;
+        self.refresh_foreground();
         if updated_order{save_settings(&self.settings);}
         if windows_changed{
-            unsafe{InvalidateRect(self.dock,null(),1);InvalidateRect(self.pips,null(),1);}
+            unsafe{InvalidateRect(self.dock,null(),1);} self.invalidate_all_pips();
             // A grouped preview is stale when its source set changed.
             if self.hover.active().is_some() {
                 self.preview.clear();
@@ -342,7 +353,30 @@ impl App {
             self.hover.force_close();
             self.preview.clear();
             self.current_icon=None;
-            unsafe{InvalidateRect(self.dock,null(),1);InvalidateRect(self.pips,null(),1);}
+            unsafe{InvalidateRect(self.dock,null(),1);} self.invalidate_all_pips();
+        }
+    }
+    fn invalidate_all_pips(&self) {
+        unsafe {
+            InvalidateRect(self.pips,null(),1);
+            InvalidateRect(self.focus_pips,null(),1);
+            InvalidateRect(self.line_pips,null(),1);
+        }
+    }
+    fn refresh_foreground(&mut self){
+        let foreground=unsafe{GetForegroundWindow()};
+        // Match an actual top-level HWND to its group, not mouse hover.
+        let key=self.groups.iter().find(|group|{
+            group.windows.iter().any(|item|{
+                unsafe{
+                    item.hwnd==foreground ||
+                    GetAncestor(foreground,GA_ROOT)==item.hwnd
+                }
+            })
+        }).map(|g|g.key.clone());
+        if self.foreground_group!=key{
+            self.foreground_group=key;
+            self.invalidate_all_pips();
         }
     }
     fn fullscreen_foreground(&self)->bool{
@@ -366,10 +400,13 @@ impl App {
                 let action=if fullscreen{SW_HIDE}else{SW_SHOWNOACTIVATE};
                 ShowWindow(self.dock,action);
                 ShowWindow(self.pips,action);
+                ShowWindow(self.focus_pips,action);
+                ShowWindow(self.line_pips,action);
             }
             if fullscreen{self.preview.clear();self.hover.force_close();}
         }
         if fullscreen{return;}
+        self.refresh_foreground();
         let mut pt:POINT=unsafe{std::mem::zeroed()};
         unsafe{GetCursorPos(&mut pt);}
         let preview_active=unsafe{IsWindowVisible(self.preview.hwnd)!=0};
@@ -403,7 +440,7 @@ impl App {
             unsafe{InvalidateRect(self.dock,null(),1);}
         }
         let moving=self.motion.tick(icon,dt);
-        if moving{unsafe{InvalidateRect(self.dock,null(),1);InvalidateRect(self.pips,null(),1);}}
+        if moving{unsafe{InvalidateRect(self.dock,null(),1);}self.invalidate_all_pips();}
     }
     fn click_dock(&mut self,x:i32,y:i32){
         let index=self.screen_icon_at(x,y);
