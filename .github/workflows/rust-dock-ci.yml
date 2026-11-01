@@ -22,7 +22,7 @@ jobs:
           workspaces: rust-dock
       - name: Unit tests (no display APIs)
         run: cargo test --manifest-path rust-dock/Cargo.toml --verbose
-      - name: Validate 26 functional slider contracts and Win32 safety
+      - name: Validate 33 functional slider contracts and Win32 safety
         run: python3 rust-dock/tests/settings_contract.py
 
   win32-build:
@@ -53,9 +53,41 @@ jobs:
             if ($file.Contains($forbidden)) { throw "Forbidden native taskbar mutation: $forbidden" }
           }
           Write-Host 'PASS: no Explorer HWND geometry, clipping region, appbar or process injection'
-      - name: Archive developer prototype (no installer, no auto-run)
+      - name: Package versioned executable and matching build metadata
+        id: package
+        shell: pwsh
+        run: |
+          $toml = Get-Content 'rust-dock/Cargo.toml' -Raw
+          $m = [regex]::Match($toml, '(?m)^version\\s*=\\s*"(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)"')
+          if (-not $m.Success) { throw 'Cargo package version not found' }
+          $major = [int]$m.Groups['major'].Value
+          $minor = [int]$m.Groups['minor'].Value
+          $patch = [int]$m.Groups['patch'].Value
+          $packageVersion = "$major.$minor.$patch"
+          # Developer generations v1, v2, v3 ... map to pre-1.0 minor versions.
+          $label = if ($major -eq 0 -and $patch -eq 0) { "v$minor" } else { "v$packageVersion" }
+          $outDir = 'rust-dock/dist'
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          $exeName = "ATB-Dock-$label.exe"
+          $exePath = Join-Path $outDir $exeName
+          Copy-Item 'rust-dock/target/release/atb-rust-dock.exe' $exePath -ErrorAction Stop
+          $digest = (Get-FileHash $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          [ordered]@{
+            displayVersion = $label
+            packageVersion = $packageVersion
+            executable = $exeName
+            gitSha = $env:GITHUB_SHA
+            workflowRunId = $env:GITHUB_RUN_ID
+            sha256 = $digest
+          } | ConvertTo-Json | Set-Content (Join-Path $outDir 'build-info.json') -Encoding utf8
+          "version_label=$label" >> $env:GITHUB_OUTPUT
+          Write-Host "Packaged $exeName | $digest | $env:GITHUB_SHA"
+      - name: Archive versioned developer build (no installer, no auto-run)
         uses: actions/upload-artifact@v4
         with:
-          name: atb-rust-dock-windows-dev
-          path: rust-dock/target/release/atb-rust-dock.exe
+          name: ATB-Dock-${{ steps.package.outputs.version_label }}
+          path: |
+            rust-dock/dist/ATB-Dock-*.exe
+            rust-dock/dist/build-info.json
+          if-no-files-found: error
           retention-days: 7
