@@ -16,6 +16,19 @@ const WINDOW_CLASS:&str="ATB.Dock.NativeSettings.v1";
 const WIDTH:i32=870;
 const HEIGHT:i32=770;
 const ROW_HEIGHT:i32=91;
+fn display_value(key:&str,value:i32,suffix:&str)->String{
+    let named=match key {
+        "pip_shape"|"focus_pip_shape"|"line_pip_shape" => match value {
+            0=>"Square / rectangle",1=>"Rounded rectangle",
+            2=>"Oval / ellipse",3=>"Circle / dot",_=>"Unknown"
+        },
+        "focus_pip_mode"=>match value {
+            0=>"Follow window count",1=>"Single line",2=>"Single dot",_=>"Unknown"
+        },
+        _=>return format!("{value} {suffix}"),
+    };
+    format!("{named} ({value})")
+}
 struct Ui{
     hwnd:HWND,
     active:Category,
@@ -56,7 +69,7 @@ unsafe fn build_category(ui:&mut Ui) {
     for (index,spec) in SPECS.iter().enumerate(){
         if spec.category != ui.active{continue;}
         let y=92+row*ROW_HEIGHT;
-        let header=format!("{}: {} {}",spec.label,ui.snapshot.by_index(index),spec.suffix);
+        let header=format!("{}: {}",spec.label,display_value(spec.key,ui.snapshot.by_index(index),spec.suffix));
         let label_window=label(ui.hwnd,&header,238,y,587,25);
         ui.controls.push(label_window);
         let hint=label(ui.hwnd,spec.help,238,y+57,600,25);
@@ -139,7 +152,7 @@ pub fn sync(settings:&Settings){
                     for &(index,track,label_window) in &ui.values{
                         let spec=&SPECS[index];
                         SendMessageW(track,TBM_SETPOS,1,ui.snapshot.by_index(index) as isize);
-                        let text=format!("{}: {} {}",spec.label,ui.snapshot.by_index(index),spec.suffix);
+                        let text=format!("{}: {}",spec.label,display_value(spec.key,ui.snapshot.by_index(index),spec.suffix));
                         SetWindowTextW(label_window,wide(&text).as_ptr());
                     }
                 }
