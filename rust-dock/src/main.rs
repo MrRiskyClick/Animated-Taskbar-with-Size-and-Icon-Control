@@ -1,4 +1,8 @@
 mod state;
+mod settings;
+
+#[cfg(windows)]
+mod settings_ui;
 
 #[cfg(windows)]
 mod windows_dock;
