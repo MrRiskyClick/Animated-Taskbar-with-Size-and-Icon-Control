@@ -1,3 +1,6 @@
+mod taskbar_matching;
+#[cfg(windows)]
+mod taskbar_access;
 mod state;
 mod settings;
 
