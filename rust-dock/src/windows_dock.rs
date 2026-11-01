@@ -256,8 +256,8 @@ impl App {
         let xs=self.motion.positions(self.width as f32);
         xs.iter().enumerate().find(|(i,left)|{
             let size=self.motion.sizes[*i];
-            let icon_y=(self.height-BASE_HEIGHT) as f32+
-                (BASE_HEIGHT as f32-size)/2.0-self.settings.get("icon_y") as f32;
+            let icon_y=(self.height-16) as f32-size-
+                self.settings.get("icon_y") as f32;
             x>=**left-5.0 && x<=**left+size+5.0 &&
             y>=icon_y-10.0 && y<=icon_y+size+10.0
         }).map(|(i,_)|i)
@@ -271,7 +271,10 @@ impl App {
         self.motion.damping=self.settings.get("damping") as f32;
         self.motion.falloff=self.settings.get("falloff") as f32/100.0;
         self.hover.timing=self.settings.timing();
-        self.height=self.settings.get("dock_height");
+        // Grow our OWN surface to fit the largest configured magnification.
+        // This NEVER changes the Windows taskbar or maximized work area.
+        self.height=self.settings.get("dock_height").max(
+            self.settings.get("max_size")+28+self.settings.get("icon_y").max(0));
         self.width=(self.screen_w*self.settings.get("dock_width")/100).max(140);
         self.dock_left=(self.screen_w-self.width)/2+self.settings.get("dock_x");
         self.dock_top=self.screen_h-self.height-self.settings.get("dock_y");
@@ -313,6 +316,10 @@ impl App {
         if updated_order{save_settings(&self.settings);}
         if keys_changed {
             self.motion.resize(self.groups.len()+1); // slot 0 = Start
+            // Never start newly created icon slots at a mismatched old size.
+            if self.motion.sizes.len()==1 {
+                self.motion.sizes[0]=self.settings.get("start_size") as f32;
+            }
             self.hover.force_close();
             self.preview.clear();
             self.current_icon=None;
@@ -510,7 +517,7 @@ unsafe fn draw_running_pips(hdc:HDC,x:i32,y:i32,size:i32,
     let pip_h=settings.get("pip_height");
     let pip_gap=settings.get("pip_gap");
     let bar_w=settings.get("pip_bar");
-    let py=y+size+settings.get("pip_y");
+    let py=(y+size+settings.get("pip_y")).max(0);
     let brush=CreateSolidBrush(color(225,225,235));
     if windows>=4{
         let left=x+(size-bar_w)/2;
@@ -541,8 +548,7 @@ unsafe fn draw_dock(hwnd:HWND){
             if index>=xs.len(){break;}
             let diameter=size.round() as i32;
             let x=xs[index].round() as i32;
-            let y=app.height-BASE_HEIGHT+(BASE_HEIGHT-diameter)/2-
-                  app.settings.get("icon_y");
+            let y=app.height-16-diameter-app.settings.get("icon_y");
             if index==0{
                 draw_start(hdc,x,y,diameter);
             }else if let Some(group)=app.groups.get(index-1){
