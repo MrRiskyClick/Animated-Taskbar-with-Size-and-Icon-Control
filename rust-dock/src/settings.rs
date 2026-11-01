@@ -34,7 +34,7 @@ macro_rules! item {($key:literal,$name:literal,$help:literal,$cat:ident,$min:lit
     min:$min,max:$max,default:$def,suffix:$suf
 }};}
 // Slider values are integers, making INI and UI robust without a framework.
-pub const SPECS:[SettingSpec;55]=[
+pub const SPECS:[SettingSpec;54]=[
 item!("dock_height","Dock visual height","Height of the floating icon surface. The real taskbar stays unchanged.",Layout,72,240,112,"px"),
 item!("dock_width","Dock width","Percentage of primary monitor width used for the icon surface.",Layout,30,100,100,"%"),
 item!("dock_x","Horizontal offset","Move the entire icon row relative to screen center.",Layout,-300,300,0,"px"),
@@ -53,7 +53,6 @@ item!("pip_width","Indicator width","Width of each short running-app indicator."
 item!("pip_height","Indicator height","Height of indicators below running apps.",Indicators,1,14,3,"px"),
 item!("pip_y","Indicator vertical offset","Move indicators up/down relative to their icons.",Indicators,-48,48,3,"px"),
 item!("pip_gap","Indicator spacing","Distance between 2 or 3 running-window indicators.",Indicators,0,20,4,"px"),
-item!("pip_bar","4+ windows bar width","Width of the long indicator for four or more windows.",Indicators,12,80,24,"px"),
 item!("pip_x","Horizontal offset","Move all running indicators left/right relative to icon center.",Indicators,-60,60,0,"px"),
 item!("pip_red","Red channel","Adjust indicator RGB color: red component.",PipStyle,0,255,225,"/255"),
 item!("pip_green","Green channel","Adjust indicator RGB color: green component.",PipStyle,0,255,225,"/255"),
@@ -152,6 +151,13 @@ impl Settings {
                 }
             }else if let Ok(value)=val.trim().parse::<i32>(){s.set(key.trim(),value);}
         }
+        // Migrate the old shared 4+ bar width if no dedicated line width exists.
+        if !text.lines().any(|line|line.starts_with("line_pip_width=")){
+            if let Some(width)=text.lines().find_map(|line|
+                line.strip_prefix("pip_bar=").and_then(|v|v.trim().parse::<i32>().ok())){
+                s.set("line_pip_width",width);
+            }
+        }
         s
     }
     pub fn remember(&mut self,key:&str){
@@ -170,7 +176,7 @@ mod tests {
     #[test]fn sliders_all_have_valid_ranges_and_distinct_keys(){
         let mut keys=std::collections::HashSet::new();
         for s in SPECS {assert!(s.min<=s.default&&s.default<=s.max);assert!(keys.insert(s.key));}
-        assert!(SPECS.len()==55);
+        assert!(SPECS.len()==54);
     }
     #[test]fn settings_round_trip_and_bounds(){
         let mut x=Settings::default();
