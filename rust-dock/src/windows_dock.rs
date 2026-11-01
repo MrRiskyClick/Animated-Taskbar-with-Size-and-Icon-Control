@@ -8,7 +8,7 @@ use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 use std::time::Instant;
 use std::sync::mpsc::Receiver;
-use crate::{taskbar_access,taskbar_matching};
+use crate::{taskbar_access,taskbar_matching,shell_icons};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Dwm::*;
 use windows_sys::Win32::Graphics::Gdi::*;
@@ -75,11 +75,32 @@ fn executable_identity(pid:u32)->Option<String> {
         }
     }
 }
-fn best_icon(hwnd:HWND,key:&str)->(HICON,bool){
+fn expand_vars(input:&str)->String {
+    // Expand e.g. %SystemRoot% in a native .lnk icon resource path.
+    unsafe {
+        let source=wide(input);
+        let mut expanded=vec![0u16;32768];
+        let written=windows_sys::Win32::System::Environment::ExpandEnvironmentStringsW(
+            source.as_ptr(),expanded.as_mut_ptr(),expanded.len() as u32);
+        if written==0 || written as usize>expanded.len(){return input.into();}
+        String::from_utf16_lossy(&expanded[..(written as usize).saturating_sub(1)])
+    }
+}
+fn best_icon(hwnd:HWND,key:&str,pinned:&[shell_icons::PinnedIcon])->(HICON,bool){
     // Extract the largest resource from a native executable rather than
     // stretching WM_GETICON's 16/32px icon to hover magnification size.
     // Extracted handles are owned by us and freed on group removal.
     unsafe {
+        // The ShellLink's assigned icon is the user's native pinned icon
+        // source. This takes priority over the EXE's first resource.
+        if let Some(pin)=shell_icons::icon_for(key,pinned) {
+            let resource=if pin.resource.is_empty(){&pin.target}else{&pin.resource};
+            let native=wide(&expand_vars(resource));
+            let mut icon:HICON=null_mut();
+            let found=PrivateExtractIconsW(native.as_ptr(),pin.index,256,256,
+                    &mut icon,null_mut(),1,0);
+            if found==1 && !icon.is_null(){return (icon,true);}
+        }
         if !key.starts_with("pid:") {
             let mut icon:HICON=null_mut();
             let resource=wide(key);
@@ -236,6 +257,8 @@ struct App{
     foreground_group:Option<String>,
     taskbar_order:Vec<String>,
     taskbar_rx:Receiver<Vec<String>>,
+    pinned_icons:Vec<shell_icons::PinnedIcon>,
+    pinned_rx:Receiver<Vec<shell_icons::PinnedIcon>>,
     preview:Preview,
     groups:Vec<Group>,
     motion:SpringDock,
@@ -316,16 +339,26 @@ impl App {
         while let Ok(order)=self.taskbar_rx.try_recv() {
             self.taskbar_order=order;
         }
+        let mut pins_changed=false;
+        while let Ok(pins)=self.pinned_rx.try_recv() {
+            if self.pinned_icons != pins {
+                pins_changed=true;
+                self.pinned_icons=pins;
+            }
+        }
         let mut new_groups=scan_groups(self.dock,self.preview.hwnd,self.pips,self.focus_pips,self.line_pips);
         let mut old=std::mem::take(&mut self.groups);
         let mut updated_order=false;
         for new in &mut new_groups {
-            if let Some(existing)=old.iter_mut().find(|x|x.key==new.key) {
-                new.icon=std::mem::replace(&mut existing.icon,null_mut());
-                new.icon_owned=std::mem::replace(&mut existing.icon_owned,false);
-            } else {
+            if !pins_changed {
+                if let Some(existing)=old.iter_mut().find(|x|x.key==new.key) {
+                    new.icon=std::mem::replace(&mut existing.icon,null_mut());
+                    new.icon_owned=std::mem::replace(&mut existing.icon_owned,false);
+                }
+            }
+            if new.icon.is_null() {
                 let (icon,owned)=best_icon(
-                    new.windows.first().map(|x|x.hwnd).unwrap_or(null_mut()),&new.key);
+                    new.windows.first().map(|x|x.hwnd).unwrap_or(null_mut()),&new.key,&self.pinned_icons);
                 new.icon=icon;
                 new.icon_owned=owned;
             }
@@ -351,7 +384,7 @@ impl App {
         self.groups=new_groups;
         self.refresh_foreground();
         if updated_order{save_settings(&self.settings);}
-        if windows_changed{
+        if windows_changed || pins_changed {
             unsafe{InvalidateRect(self.dock,null(),1);} self.invalidate_all_pips();
             // A grouped preview is stale when its source set changed.
             if self.hover.active().is_some() {
@@ -936,6 +969,7 @@ pub fn run()->Result<(),String>{
         APP.with(|cell|*cell.borrow_mut()=Some(App{
             dock,pips,focus_pips,line_pips,foreground_group:None,
             taskbar_order:Vec::new(),taskbar_rx:taskbar_access::spawn(),
+            pinned_icons:Vec::new(),pinned_rx:shell_icons::spawn(),
             preview:Preview{hwnd:preview,thumbs:vec![],
                 items:vec![],bounds:RECT::default(),cols:0,
                 tile_w:212,tile_h:160,gap:12},
