@@ -13,6 +13,7 @@ use windows::Win32::UI::Shell::{IShellLinkW,ShellLink};
 
 #[derive(Clone,Debug,PartialEq,Eq)]
 pub struct PinnedIcon {
+    pub shortcut:String,
     pub name:String,
     pub target:String,
     pub resource:String,
@@ -50,7 +51,7 @@ fn enumerate()->Vec<PinnedIcon>{
             let resource=if icon_ok{utf16(&icon)}else{String::new()};
             let name=shortcut.file_stem().map(|n|n.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            result.push(PinnedIcon{name,target,resource,index});
+            result.push(PinnedIcon{shortcut:shortcut.to_string_lossy().into_owned(),name,target,resource,index});
         }
     }
     result
