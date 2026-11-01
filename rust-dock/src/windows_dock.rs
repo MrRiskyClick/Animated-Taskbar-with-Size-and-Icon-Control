@@ -491,6 +491,11 @@ impl App {
             PreviewAction::Open(slot)=>{
                 if slot>1 {
                     if let Some(group)=self.groups.get(slot-2){
+                        if group.windows.is_empty(){
+                            // Pinned-but-not-running items don't have DWM windows.
+                            self.hover.force_close();
+                            return;
+                        }
                         let xs=self.motion.positions(self.width as f32);
                         let anchor=self.dock_left+xs[slot] as i32+
                             self.motion.sizes[slot] as i32/2;
