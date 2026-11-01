@@ -22,7 +22,7 @@ jobs:
           workspaces: rust-dock
       - name: Unit tests (no display APIs)
         run: cargo test --manifest-path rust-dock/Cargo.toml --verbose
-      - name: Validate 33 functional slider contracts and Win32 safety
+      - name: Validate 54 functional slider contracts and Win32 safety
         run: python3 rust-dock/tests/settings_contract.py
 
   win32-build:
@@ -53,6 +53,17 @@ jobs:
             if ($file.Contains($forbidden)) { throw "Forbidden native taskbar mutation: $forbidden" }
           }
           Write-Host 'PASS: no Explorer HWND geometry, clipping region, appbar or process injection'
+          # Native taskbar observer & ShellLink modules are strictly read-only.
+          $observer = Get-Content rust-dock/src/taskbar_access.rs -Raw
+          $shell = Get-Content rust-dock/src/shell_icons.rs -Raw
+          foreach ($source in @($observer,$shell)) {
+            foreach ($forbidden in @('SendInput(', 'Invoke(', 'SetPath(', 'SetIconLocation(',
+                    'SetWindowPos(', 'RegSetValue', 'SHAppBarMessage(', 'SetWindowRgn(',
+                    'SetForegroundWindow(', 'TerminateProcess(')) {
+              if ($source.Contains($forbidden)) { throw "Forbidden observer write/action: $forbidden" }
+            }
+          }
+          Write-Host 'PASS: native taskbar observation and pinned shortcut inspection remain read-only'
       - name: Package versioned executable and matching build metadata
         id: package
         shell: pwsh
