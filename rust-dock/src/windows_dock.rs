@@ -32,6 +32,19 @@ const PREVIEW_PAD: i32=14;
 const TIMER_TICK: usize=1;
 const TIMER_REFRESH: usize=2;
 const MAGIC_BG: u32=0x00ff00ff; // magenta colorkey, transparent pixels
+const START_ICON_ICO:&[u8]=include_bytes!("../assets/WindowsLogo.ico");
+const TASKVIEW_ICON_ICO:&[u8]=include_bytes!("../assets/TaskView.ico");
+fn icon_resource_from_ico(data:&[u8])->HICON{
+    // The embedded .ico contains one PNG RT_ICON resource. Extract the resource
+    // payload rather than passing an entire ICO directory to the Win32 API.
+    if data.len()<22 || &data[..4]!=[0,0,1,0]{return null_mut();}
+    let size=u32::from_le_bytes(data[14..18].try_into().unwrap()) as usize;
+    let offset=u32::from_le_bytes(data[18..22].try_into().unwrap()) as usize;
+    let Some(end)=offset.checked_add(size) else{return null_mut();};
+    if end>data.len() || size==0 {return null_mut();}
+    unsafe{CreateIconFromResourceEx(data[offset..end].as_ptr(),size as u32,
+        1,0x00030000,128,128,0)}
+}
 
 fn wide(s:&str)->Vec<u16> {s.encode_utf16().chain(std::iter::once(0)).collect()}
 fn color(r:u8,g:u8,b:u8)->u32 {(r as u32)|((g as u32)<<8)|((b as u32)<<16)}
@@ -255,6 +268,8 @@ impl Preview {
 struct App{
     dock:HWND,
     pips:HWND,
+    start_icon:HICON,
+    task_view_icon:HICON,
     focus_pips:HWND,
     line_pips:HWND,
     foreground_group:Option<String>,
@@ -797,9 +812,13 @@ unsafe fn draw_dock(hwnd:HWND){
             let x=xs[index].round() as i32;
             let y=app.height-16-diameter-app.settings.get("icon_y");
             if index==0{
-                draw_start(hdc,x,y,diameter);
+                if !app.start_icon.is_null(){
+                    DrawIconEx(hdc,x,y,app.start_icon,diameter,diameter,0,null_mut(),DI_NORMAL);
+                }else {draw_start(hdc,x,y,diameter);}
             }else if index==1{
-                draw_task_view(hdc,x,y,diameter);
+                if !app.task_view_icon.is_null(){
+                    DrawIconEx(hdc,x,y,app.task_view_icon,diameter,diameter,0,null_mut(),DI_NORMAL);
+                }else {draw_task_view(hdc,x,y,diameter);}
             }else if let Some(group)=app.groups.get(index-2){
                 if !group.icon.is_null(){
                     DrawIconEx(hdc,x,y,group.icon,diameter,diameter,0,null_mut(),DI_NORMAL);
@@ -1002,7 +1021,10 @@ pub fn run()->Result<(),String>{
         let timing=settings.timing();
         let start=Instant::now();
         APP.with(|cell|*cell.borrow_mut()=Some(App{
-            dock,pips,focus_pips,line_pips,foreground_group:None,
+            dock,pips,
+            start_icon:icon_resource_from_ico(START_ICON_ICO),
+            task_view_icon:icon_resource_from_ico(TASKVIEW_ICON_ICO),
+            focus_pips,line_pips,foreground_group:None,
             taskbar_order:Vec::new(),taskbar_rx:taskbar_access::spawn(),
             pinned_icons:Vec::new(),pinned_rx:shell_icons::spawn(),
             preview:Preview{hwnd:preview,thumbs:vec![],
@@ -1035,7 +1057,11 @@ pub fn run()->Result<(),String>{
         }
         KillTimer(dock,TIMER_TICK);
         KillTimer(dock,TIMER_REFRESH);
-        with_app(|app|app.preview.clear());
+        with_app(|app|{
+            app.preview.clear();
+            if !app.start_icon.is_null(){DestroyIcon(app.start_icon);}
+            if !app.task_view_icon.is_null(){DestroyIcon(app.task_view_icon);}
+        });
         APP.with(|cell|*cell.borrow_mut()=None);
         DestroyWindow(preview);
         DestroyWindow(focus_pips);
