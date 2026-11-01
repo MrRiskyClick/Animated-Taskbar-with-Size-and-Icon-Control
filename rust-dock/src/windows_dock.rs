@@ -109,15 +109,17 @@ fn best_icon(hwnd:HWND,key:&str,pinned:&[shell_icons::PinnedIcon])->(HICON,bool)
         // The ShellLink's assigned icon is the user's native pinned icon
         // source. This takes priority over the EXE's first resource.
         if let Some(pin)=shell_icons::icon_for(key,pinned) {
-            let resource=if pin.resource.is_empty(){&pin.target}else{&pin.resource};
-            let native=wide(&expand_vars(resource));
-            let mut icon:HICON=null_mut();
-            let found=PrivateExtractIconsW(native.as_ptr(),pin.index,256,256,
+            // Explicit Change Icon location on the .lnk takes priority.
+            if !pin.resource.is_empty(){
+                let native=wide(&expand_vars(&pin.resource));
+                let mut icon:HICON=null_mut();
+                let found=PrivateExtractIconsW(native.as_ptr(),pin.index,256,256,
                     &mut icon,null_mut(),1,0);
-            if found==1 && !icon.is_null(){return (icon,true);}
-            // When the shortcut does not specify its own resource, let the
-            // Windows Shell resolve its assigned icon, as it does for the
-            // shortcut's Change Icon property and shell image cache.
+                if found==1 && !icon.is_null(){return (icon,true);}
+            }
+            // If no explicit shortcut resource exists, use the Shell's
+            // resolved pinned-shortcut icon before the EXE's first icon.
+            // The EXE first icon may differ (Windhawk is an example).
             let mut info:SHFILEINFOW=std::mem::zeroed();
             let shortcut=wide(&pin.shortcut);
             if SHGetFileInfoW(shortcut.as_ptr(),0,&mut info,
