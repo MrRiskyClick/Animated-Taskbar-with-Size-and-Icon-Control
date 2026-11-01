@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 use std::time::Instant;
+use std::sync::mpsc::Receiver;
+use crate::{taskbar_access,taskbar_matching};
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Graphics::Dwm::*;
 use windows_sys::Win32::Graphics::Gdi::*;
@@ -232,6 +234,8 @@ struct App{
     focus_pips:HWND,
     line_pips:HWND,
     foreground_group:Option<String>,
+    taskbar_order:Vec<String>,
+    taskbar_rx:Receiver<Vec<String>>,
     preview:Preview,
     groups:Vec<Group>,
     motion:SpringDock,
@@ -307,6 +311,11 @@ impl App {
         self.hover.force_close();
     }
     fn refresh(&mut self){
+        // UIA observation is performed off the UI thread; no blocking COM
+        // calls during animation, no Explorer invocation or taskbar mutation.
+        while let Ok(order)=self.taskbar_rx.try_recv() {
+            self.taskbar_order=order;
+        }
         let mut new_groups=scan_groups(self.dock,self.preview.hwnd,self.pips,self.focus_pips,self.line_pips);
         let mut old=std::mem::take(&mut self.groups);
         let mut updated_order=false;
@@ -325,8 +334,14 @@ impl App {
                 updated_order=true;
             }
         }
-        new_groups.sort_by_key(|g|self.settings.order.iter()
-            .position(|k|k==&g.key).unwrap_or(usize::MAX));
+        new_groups.sort_by_key(|g|{
+            let native=taskbar_matching::native_rank(&g.key,&g.label,&self.taskbar_order);
+            let saved=self.settings.order.iter().position(|k|k==&g.key)
+                .unwrap_or(usize::MAX);
+            // Matched native taskbar positions take precedence; unmatched
+            // entries retain the prior saved order. No speculative reshuffle.
+            (native.is_none(),native.unwrap_or(usize::MAX),saved)
+        });
         let keys_changed=new_groups.len()!=old.len() ||
             new_groups.iter().zip(&old).any(|(a,b)|a.key!=b.key);
         let windows_changed=new_groups.len()!=old.len() ||
@@ -919,7 +934,9 @@ pub fn run()->Result<(),String>{
         let timing=settings.timing();
         let start=Instant::now();
         APP.with(|cell|*cell.borrow_mut()=Some(App{
-            dock,pips,focus_pips,line_pips,foreground_group:None,preview:Preview{hwnd:preview,thumbs:vec![],
+            dock,pips,focus_pips,line_pips,foreground_group:None,
+            taskbar_order:Vec::new(),taskbar_rx:taskbar_access::spawn(),
+            preview:Preview{hwnd:preview,thumbs:vec![],
                 items:vec![],bounds:RECT::default(),cols:0,
                 tile_w:212,tile_h:160,gap:12},
             groups:vec![],motion:SpringDock::new(2),
