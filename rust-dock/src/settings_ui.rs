@@ -93,7 +93,7 @@ unsafe fn build_category(ui:&mut Ui) {
 }
 unsafe fn init_window(hwnd:HWND,settings:&Settings){
     let categories=CreateWindowExW(WS_EX_CLIENTEDGE,wide("LISTBOX").as_ptr(),null(),
-        WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_VSCROLL|LBS_NOTIFY,
+        WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_VSCROLL|(LBS_NOTIFY as u32),
         16,112,192,500,hwnd,CATEGORY_LIST_ID as *mut _,
         GetModuleHandleW(null()),null());
     font(categories);
