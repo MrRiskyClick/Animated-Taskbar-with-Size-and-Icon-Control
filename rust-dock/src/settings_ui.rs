@@ -11,7 +11,7 @@ use crate::settings::{Category,Settings,SPECS};
 use crate::windows_dock::settings_slider_changed;
 
 fn wide(s:&str)->Vec<u16>{s.encode_utf16().chain(std::iter::once(0)).collect()}
-const CAT_FIRST:usize=2000;
+const CATEGORY_LIST_ID:usize=2000;
 const WINDOW_CLASS:&str="ATB.Dock.NativeSettings.v1";
 const WIDTH:i32=870;
 const HEIGHT:i32=770;
@@ -19,7 +19,7 @@ const ROW_HEIGHT:i32=91;
 struct Ui{
     hwnd:HWND,
     active:Category,
-    tab_buttons:Vec<HWND>,
+    category_list:HWND,
     controls:Vec<HWND>,
     values:Vec<(usize,HWND,HWND)>, // setting index, trackbar, value label
     snapshot:Settings,
@@ -76,17 +76,22 @@ unsafe fn build_category(ui:&mut Ui) {
         ui.controls.push(track);
         row+=1;
     }
-    // All six categories fit without a scrollbar at 770px.
+    // Category list on the left supports 10 independent settings panels.
 }
 unsafe fn init_window(hwnd:HWND,settings:&Settings){
-    let mut ui=Ui{hwnd,active:Category::Layout,tab_buttons:vec![],
+    let categories=CreateWindowExW(WS_EX_CLIENTEDGE,wide("LISTBOX").as_ptr(),null(),
+        WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_VSCROLL|LBS_NOTIFY,
+        16,112,192,500,hwnd,CATEGORY_LIST_ID as *mut _,
+        GetModuleHandleW(null()),null());
+    font(categories);
+    let mut ui=Ui{hwnd,active:Category::Layout,category_list:categories,
             controls:vec![],values:vec![],snapshot:settings.clone()};
     label(hwnd,"ATB DOCK SETTINGS",16,16,200,38);
     label(hwnd,"Changes apply live",16,49,200,29);
-    for (i,cat) in Category::ALL.iter().enumerate(){
-        ui.tab_buttons.push(btn(hwnd,cat.title(),CAT_FIRST+i,
-                    16,112+(i as i32)*66,192,48));
+    for cat in Category::ALL {
+        SendMessageW(categories,LB_ADDSTRING,0,wide(cat.title()).as_ptr() as isize);
     }
+    SendMessageW(categories,LB_SETCURSEL,0,0);
     build_category(&mut ui);
     UI.with(|cell|*cell.borrow_mut()=Some(ui));
 }
@@ -146,12 +151,15 @@ unsafe extern "system" fn proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRESULT{
     match msg {
         WM_COMMAND=>{
             let id=w & 0xFFFF;
-            if id>=CAT_FIRST && id<CAT_FIRST+Category::ALL.len(){
+            if id==CATEGORY_LIST_ID && ((w>>16) as u16)==LBN_SELCHANGE as u16 {
                 UI.with(|cell|{
                     if let Ok(mut state)=cell.try_borrow_mut(){
                         if let Some(ui)=state.as_mut(){
-                            ui.active=Category::ALL[id-CAT_FIRST];
-                            build_category(ui);
+                            let selected=SendMessageW(ui.category_list,LB_GETCURSEL,0,0);
+                            if selected>=0 && (selected as usize)<Category::ALL.len(){
+                                ui.active=Category::ALL[selected as usize];
+                                build_category(ui);
+                            }
                         }
                     }
                 });
