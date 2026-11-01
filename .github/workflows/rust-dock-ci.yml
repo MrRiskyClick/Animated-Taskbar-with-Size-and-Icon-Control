@@ -24,6 +24,8 @@ jobs:
         run: cargo test --manifest-path rust-dock/Cargo.toml --verbose
       - name: Validate 54 functional slider contracts and Win32 safety
         run: python3 rust-dock/tests/settings_contract.py
+      - name: Validate embedded Windows taskbar icons
+        run: python3 rust-dock/tests/icon_assets.py
 
   win32-build:
     name: Build native Win32/DWM dock
