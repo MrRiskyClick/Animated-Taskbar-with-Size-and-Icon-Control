@@ -312,8 +312,20 @@ impl App {
             .position(|k|k==&g.key).unwrap_or(usize::MAX));
         let keys_changed=new_groups.len()!=old.len() ||
             new_groups.iter().zip(&old).any(|(a,b)|a.key!=b.key);
+        let windows_changed=new_groups.len()!=old.len() ||
+            new_groups.iter().zip(&old).any(|(a,b)|
+                a.windows.len()!=b.windows.len() ||
+                a.windows.iter().zip(&b.windows).any(|(x,y)|x.hwnd!=y.hwnd));
         self.groups=new_groups;
         if updated_order{save_settings(&self.settings);}
+        if windows_changed{
+            unsafe{InvalidateRect(self.dock,null(),1);}
+            // A grouped preview is stale when its source set changed.
+            if self.hover.active().is_some() {
+                self.preview.clear();
+                self.hover.force_close();
+            }
+        }
         if keys_changed {
             self.motion.resize(self.groups.len()+1); // slot 0 = Start
             // Never start newly created icon slots at a mismatched old size.
