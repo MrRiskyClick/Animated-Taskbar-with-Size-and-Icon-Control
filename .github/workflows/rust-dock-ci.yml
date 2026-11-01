@@ -1,0 +1,106 @@
+name: Rust native dock — isolated Windows build
+
+on:
+  push:
+    branches:
+      - feature/rust-native-dock-v0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-math:
+    name: Pure animation and hover behavior tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-dock
+      - name: Unit tests (no display APIs)
+        run: cargo test --manifest-path rust-dock/Cargo.toml --verbose
+      - name: Validate 54 functional slider contracts and Win32 safety
+        run: python3 rust-dock/tests/settings_contract.py
+      - name: Validate embedded Windows taskbar icons
+        run: python3 rust-dock/tests/icon_assets.py
+
+  win32-build:
+    name: Build native Win32/DWM dock
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust-dock
+      - name: Compile native app and run pure logic tests
+        shell: pwsh
+        run: |
+          cargo test --manifest-path rust-dock/Cargo.toml --verbose
+          if ($LASTEXITCODE -ne 0) { throw 'Rust tests failed' }
+          cargo build --manifest-path rust-dock/Cargo.toml --release
+          if ($LASTEXITCODE -ne 0) { throw 'Rust Win32 build failed' }
+          if (-not (Test-Path 'rust-dock/target/release/atb-rust-dock.exe')) { throw 'Dock executable missing' }
+      - name: Static scope gate (no modifications to Explorer/native taskbar)
+        shell: pwsh
+        run: |
+          $file = Get-Content rust-dock/src/windows_dock.rs -Raw
+          foreach ($forbidden in @('SetWindowRgn(', 'SHAppBarMessage(', 'SetWindowLongW(', 'SetWindowLongPtrW(', 'TerminateProcess(', 'CreateRemoteThread(', 'OpenProcess(PROCESS_ALL_ACCESS', 'FindWindowW(')) {
+            if ($file.Contains($forbidden)) { throw "Forbidden native taskbar mutation: $forbidden" }
+          }
+          Write-Host 'PASS: no Explorer HWND geometry, clipping region, appbar or process injection'
+          # Native taskbar observer & ShellLink modules are strictly read-only.
+          $observer = Get-Content rust-dock/src/taskbar_access.rs -Raw
+          $shell = Get-Content rust-dock/src/shell_icons.rs -Raw
+          foreach ($source in @($observer,$shell)) {
+            foreach ($forbidden in @('SendInput(', 'Invoke(', 'SetPath(', 'SetIconLocation(',
+                    'SetWindowPos(', 'RegSetValue', 'SHAppBarMessage(', 'SetWindowRgn(',
+                    'SetForegroundWindow(', 'TerminateProcess(')) {
+              if ($source.Contains($forbidden)) { throw "Forbidden observer write/action: $forbidden" }
+            }
+          }
+          Write-Host 'PASS: native taskbar observation and pinned shortcut inspection remain read-only'
+      - name: Package versioned executable and matching build metadata
+        id: package
+        shell: pwsh
+        run: |
+          $toml = Get-Content 'rust-dock/Cargo.toml' -Raw
+          $m = [regex]::Match($toml, '(?m)^version\s*=\s*"(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)"')
+          if (-not $m.Success) { throw 'Cargo package version not found' }
+          $major = [int]$m.Groups['major'].Value
+          $minor = [int]$m.Groups['minor'].Value
+          $patch = [int]$m.Groups['patch'].Value
+          $packageVersion = "$major.$minor.$patch"
+          # Developer generations v1, v2, v3 ... map to pre-1.0 minor versions.
+          $label = if ($major -eq 0 -and $patch -eq 0) { "v$minor" } else { "v$packageVersion" }
+          $outDir = 'rust-dock/dist'
+          New-Item -ItemType Directory -Path $outDir -Force | Out-Null
+          $exeName = "ATB-Dock-$label.exe"
+          $exePath = Join-Path $outDir $exeName
+          Copy-Item 'rust-dock/target/release/atb-rust-dock.exe' $exePath -ErrorAction Stop
+          $digest = (Get-FileHash $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          [ordered]@{
+            displayVersion = $label
+            packageVersion = $packageVersion
+            executable = $exeName
+            gitSha = $env:GITHUB_SHA
+            workflowRunId = $env:GITHUB_RUN_ID
+            sha256 = $digest
+          } | ConvertTo-Json | Set-Content (Join-Path $outDir 'build-info.json') -Encoding utf8
+          "version_label=$label" >> $env:GITHUB_OUTPUT
+          Write-Host "Packaged $exeName | $digest | $env:GITHUB_SHA"
+      - name: Archive versioned developer build (no installer, no auto-run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ATB-Dock-${{ steps.package.outputs.version_label }}
+          path: |
+            rust-dock/dist/ATB-Dock-*.exe
+            rust-dock/dist/build-info.json
+          if-no-files-found: error
+          retention-days: 7
