@@ -895,6 +895,7 @@ unsafe extern "system" fn preview_proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRE
     }
 }
 const MENU_SETTINGS:usize=1001;
+const MENU_DIAGNOSTICS:usize=1002;
 const MENU_EXIT:usize=1099;
 
 fn settings_path()->Option<std::path::PathBuf>{
@@ -935,10 +936,43 @@ pub(crate) fn settings_slider_changed(index:usize,value:i32){
     });
 }
 
+fn export_taskbar_report(app:&App)->Result<std::path::PathBuf,String>{
+    let Some(base)=std::env::var_os("LOCALAPPDATA") else{
+        return Err("LOCALAPPDATA missing".to_string());
+    };
+    let folder=std::path::PathBuf::from(base).join("ATBRustDock");
+    std::fs::create_dir_all(&folder).map_err(|e|e.to_string())?;
+    let path=folder.join("taskbar-order-report.txt");
+    let mut report=String::from(
+        "ATB v5 read-only taskbar identity/order report\n\n");
+    report.push_str("Windows taskbar UI Automation buttons, LEFT TO RIGHT:\n");
+    if app.taskbar_order.is_empty(){
+        report.push_str("  NONE OBSERVED (taskbar mod, accessibility tree or button filtering may hide them)\n");
+    }
+    for (index,name) in app.taskbar_order.iter().enumerate(){
+        report.push_str(&format!("  {index}: {name}\n"));
+    }
+    report.push_str("\nDOCK ITEMS IN CURRENT ORDER:\n");
+    for (index,group) in app.groups.iter().enumerate(){
+        let rank=taskbar_matching::native_rank(
+            &group.key,&group.label,&app.taskbar_order);
+        report.push_str(&format!(
+            "  {index}: {} | exe={} | native UIA rank={rank:?} | windows={}\n",
+            group.label,group.key,group.windows.len()));
+        if let Some(pin)=shell_icons::icon_for(&group.key,&app.pinned_icons){
+            report.push_str(&format!(
+                "      PIN {} | shortcut={} | icon resource={} | icon index={}\n",
+                pin.name,pin.shortcut,pin.resource,pin.index));
+        }
+    }
+    std::fs::write(&path,report).map_err(|e|e.to_string())?;
+    Ok(path)
+}
 unsafe fn show_dock_menu(hwnd:HWND){
     let menu=CreatePopupMenu();
     if menu.is_null(){return;}
     AppendMenuW(menu,MF_STRING,MENU_SETTINGS,wide("Settings...").as_ptr());
+    AppendMenuW(menu,MF_STRING,MENU_DIAGNOSTICS,wide("Export native taskbar order report...").as_ptr());
     AppendMenuW(menu,MF_SEPARATOR,0,null());
     AppendMenuW(menu,MF_STRING,MENU_EXIT,wide("Exit ATB Dock").as_ptr());
     let mut pt:POINT=std::mem::zeroed();
@@ -948,6 +982,14 @@ unsafe fn show_dock_menu(hwnd:HWND){
     DestroyMenu(menu);
     match selected as usize {
         MENU_SETTINGS=>with_app(|app|settings_ui::open(&app.settings)),
+        MENU_DIAGNOSTICS=>with_app(|app|{
+            let response=match export_taskbar_report(app){
+                Ok(path)=>format!("Saved read-only diagnostic report to:\n{}",path.display()),
+                Err(e)=>format!("Report export failed: {e}")
+            };
+            unsafe{MessageBoxW(hwnd,wide(&response).as_ptr(),
+                wide("ATB Taskbar Order Report").as_ptr(),MB_OK);}
+        }),
         MENU_EXIT=>{PostMessageW(hwnd,WM_CLOSE,0,0);},
         _=>{}
     }
