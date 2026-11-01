@@ -772,6 +772,7 @@ pub fn run()->Result<(),String>{
         if module.is_null(){return Err("GetModuleHandleW failed".into());}
         let dock_class=wide("ATB.Dock.Prototype.1");
         let preview_class=wide("ATB.Preview.Prototype.1");
+        let pips_class=wide("ATB.Pips.v0.3");
         let mut wc:WNDCLASSW=std::mem::zeroed();
         wc.hInstance=module;
         wc.lpszClassName=dock_class.as_ptr();
@@ -780,6 +781,9 @@ pub fn run()->Result<(),String>{
         wc.lpszClassName=preview_class.as_ptr();
         wc.lpfnWndProc=Some(preview_proc);
         if RegisterClassW(&wc)==0{return Err("Could not register preview window class".into());}
+        wc.lpszClassName=pips_class.as_ptr();
+        wc.lpfnWndProc=Some(pips_proc);
+        if RegisterClassW(&wc)==0{return Err("Could not register pip window class".into());}
         let screen_w=GetSystemMetrics(SM_CXSCREEN);
         let screen_h=GetSystemMetrics(SM_CYSCREEN);
         if screen_w<=400||screen_h<=200{return Err("Invalid display geometry".into());}
@@ -793,19 +797,29 @@ pub fn run()->Result<(),String>{
         if SetLayeredWindowAttributes(dock,MAGIC_BG,255,LWA_COLORKEY)==0{
             DestroyWindow(dock);return Err("Could not configure dock transparency".into());
         }
+        let pips=CreateWindowExW(
+            WS_EX_LAYERED|WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE|WS_EX_TOPMOST|WS_EX_TRANSPARENT,
+            pips_class.as_ptr(),wide("ATB Running Indicators").as_ptr(),WS_POPUP,
+            0,top,screen_w,DOCK_HEIGHT,
+            null_mut(),null_mut(),module,null());
+        if pips.is_null(){DestroyWindow(dock);return Err("Could not create pip overlay".into());}
+        if SetLayeredWindowAttributes(pips,MAGIC_BG,255,LWA_COLORKEY|LWA_ALPHA)==0{
+            DestroyWindow(pips);DestroyWindow(dock);
+            return Err("Could not configure pip transparency".into());
+        }
         let preview=CreateWindowExW(
             WS_EX_TOOLWINDOW|WS_EX_NOACTIVATE,
             preview_class.as_ptr(),wide("ATB DWM Previews").as_ptr(),WS_POPUP,
             0,0,50,50,null_mut(),null_mut(),module,null());
-        if preview.is_null(){DestroyWindow(dock);return Err("Could not create DWM preview window".into());}
+        if preview.is_null(){DestroyWindow(pips);DestroyWindow(dock);return Err("Could not create DWM preview window".into());}
         let settings=load_settings();
         let timing=settings.timing();
         let start=Instant::now();
         APP.with(|cell|*cell.borrow_mut()=Some(App{
-            dock,preview:Preview{hwnd:preview,thumbs:vec![],
+            dock,pips,preview:Preview{hwnd:preview,thumbs:vec![],
                 items:vec![],bounds:RECT::default(),cols:0,
                 tile_w:212,tile_h:160,gap:12},
-            groups:vec![],motion:SpringDock::new(1),
+            groups:vec![],motion:SpringDock::new(2),
             hover:Hover::new(timing),settings,
             started:start,current_icon:None,
             width:screen_w,height:DOCK_HEIGHT,screen_w,screen_h,
@@ -817,7 +831,9 @@ pub fn run()->Result<(),String>{
             app.refresh();
         });
         ShowWindow(dock,SW_SHOWNOACTIVATE);
+        ShowWindow(pips,SW_SHOWNOACTIVATE);
         UpdateWindow(dock);
+        UpdateWindow(pips);
         // The settings window controls the hover/animation interval live.
         SetTimer(dock,TIMER_REFRESH,2000,None); // prototype fallback until WinEventHook
         let mut msg:MSG=std::mem::zeroed();
@@ -829,7 +845,9 @@ pub fn run()->Result<(),String>{
         with_app(|app|app.preview.clear());
         APP.with(|cell|*cell.borrow_mut()=None);
         DestroyWindow(preview);
+        DestroyWindow(pips);
         DestroyWindow(dock);
+        UnregisterClassW(pips_class.as_ptr(),module);
         UnregisterClassW(preview_class.as_ptr(),module);
         UnregisterClassW(dock_class.as_ptr(),module);
     }
