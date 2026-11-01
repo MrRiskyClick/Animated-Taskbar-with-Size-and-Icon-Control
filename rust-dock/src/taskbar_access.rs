@@ -36,6 +36,7 @@ fn observe(automation:&IUIAutomation)->Vec<String>{
         for i in 0..count.min(1200) {
             let Ok(element)=items.GetElement(i) else{continue};
             let Ok(kind)=element.CurrentControlType() else{continue};
+            let kind=kind.0;
             // UIA_ButtonControlTypeId=50000, UIA_ListItemControlTypeId=50007,
             // UIA_TabItemControlTypeId=50019; ignore nested images/text/frames.
             if kind!=50000 && kind!=50007 && kind!=50019{continue;}
