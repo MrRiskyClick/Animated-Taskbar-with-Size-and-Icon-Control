@@ -1,4 +1,4 @@
-# ATB Rust Dock v0.2 — Native Windows developer preview
+# ATB Rust Dock v0.3 — Native Windows developer preview
 
 A standalone Rust/Win32 dock built and tested in GitHub Actions. It does NOT
 replace, resize, alter the work-area reservation of, or inject into the
@@ -15,8 +15,9 @@ are not modified.
 - **High-resolution native app icons:** request an icon resource at 256×256
   from each executable; fall back to a large window-provided icon, class icon
   or system icon. Actual quality still depends on the application's resources.
-- **Start button:** independently drawn crisp four-pane Windows logo at the
-  beginning of the icon row, invokes the Windows Start menu on click.
+- **Start + Task View:** independently rendered Win11-style Start and Task View
+  buttons, invoking native Windows Start and Win+Tab without shell mutation.
+  These are approximated vector icons, NOT the original Windows shell art assets.
 - **Running apps:** read-only top-level window enumeration, grouping by
   process executable, click to activate, grouped DWM live hover thumbnails.
 - **Order:** running applications can be reordered by dragging their dock
@@ -27,10 +28,13 @@ are not modified.
 - **Animated magnification:** spring-based neighbor push-out with independently
   adjustable size, spacing, stiffness, damping and neighbor falloff.
 - **Pips:** one indicator for one window, 2 for two, 3 for three,
-  a long bar for four or more; width, height, offsets and spacing adjustable.
+  a long bar for four or more; width, height, horizontal/vertical offsets,
+  spacing, RGB color, shape (square/rounded/ellipse), corner radius and opacity.
+  Pips have a **separate click-through layered HWND** so their alpha can be
+  adjusted independently of app icons without changing Explorer.
 - **Native settings popup:** right-click anywhere on an app icon, select
-  **Settings...** to open a separate native Win32 window. Five categories
-  contain **26 live numeric sliders**, all functional. Use arrow keys on a
+  **Settings...** to open a separate native Win32 window. Six categories
+  contain **33 live numeric sliders**, all functional. Use arrow keys on a
   focused slider for 1-unit adjustments. Every change saves automatically.
 - **DWM hover previews:** configurable opening/dismissal delays, preview tile
   width/height, columns, spacing and distance from the dock; click to activate
@@ -47,6 +51,7 @@ are not modified.
 | Icon appearance | Resting size, magnified size, gap, independent Start size, opacity |
 | Animation | Spring stiffness, damping, neighbor falloff, frame interval |
 | Running indicators | Pip width, height, vertical position, between-pip gap, 4+ window bar length |
+| Indicator appearance | Horizontal offset, red/green/blue color, independent opacity, shape, corner radius |
 | DWM previews | Opening hover delay, dismissal delay, tile width/height, columns, tile gap, vertical distance |
 
 All settings are in `%LOCALAPPDATA%\ATBRustDock\settings.ini`, never in the
@@ -69,10 +74,22 @@ Close the dock via **right-click → Exit ATB Dock**, or close its console
 window. No Explorer restart. Keep native taskbar buttons visible for the
 first evaluation if you want a fallback.
 
-## Still to implement
+## Still to implement / correctness boundaries
 
-Exact Windows taskbar pinned order and pinned-but-not-running applications,
-modern packaged-app icon resolution, shell-equivalent context menus and
+- **Exact native icon assets and live taskbar ordering remain UNRESOLVED.**
+  Running apps still use executable identity with a 256px icon-resource request;
+  Windows Explorer may instead render an app's pinned shell shortcut or packaged
+  app identity, causing Windhawk and other app-icon mismatches. Manual drag order
+  is not automatic Explorer order. The OS does not supply a public supported API
+  returning rendered taskbar glyph pixels + ordered pinned identities together;
+  a read-only accessibility/shortcut identity resolver needs platform validation.
+- **Do not hide your native taskbar icons while evaluating exact-order/icon parity**;
+  keep the original visible as a reference for your manual tests.
+
+## Further production work
+
+Read-only Explorer taskbar order/identity, pinned-but-not-running applications,
+exact shortcut/packaged-app icon resources, shell-equivalent context menus and
 jump lists, native task view replacement, multi-monitor/DPI coverage,
 GPU Direct2D rendering and fully event-driven idle scheduling.
 
