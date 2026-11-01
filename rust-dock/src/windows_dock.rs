@@ -14,7 +14,7 @@ use windows_sys::Win32::System::LibraryLoader::*;
 use windows_sys::Win32::System::Threading::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::state::{Hover, PreviewAction, SpringDock, Timing};
+use crate::state::{Hover, PreviewAction, SpringDock};
 use crate::settings::Settings;
 use crate::settings_ui;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
