@@ -11,7 +11,7 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::UI::Shell::{IShellLinkW,ShellLink};
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq,Eq)]
 pub struct PinnedIcon {
     pub name:String,
     pub target:String,
