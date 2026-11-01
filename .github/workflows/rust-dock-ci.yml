@@ -58,7 +58,7 @@ jobs:
         shell: pwsh
         run: |
           $toml = Get-Content 'rust-dock/Cargo.toml' -Raw
-          $m = [regex]::Match($toml, '(?m)^version\\s*=\\s*"(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)"')
+          $m = [regex]::Match($toml, '(?m)^version\s*=\s*"(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)"')
           if (-not $m.Success) { throw 'Cargo package version not found' }
           $major = [int]$m.Groups['major'].Value
           $minor = [int]$m.Groups['minor'].Value
