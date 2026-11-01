@@ -470,22 +470,62 @@ unsafe fn draw_preview(hwnd:HWND){
         for (i,item) in app.preview.items.iter().enumerate() {
             let col=i%app.preview.cols;
             let row=i/app.preview.cols;
-            let x=PREVIEW_PAD+(col as i32)*(PREVIEW_TILE_W+PREVIEW_GAP);
-            let y=PREVIEW_PAD+(row as i32)*(PREVIEW_TILE_H+PREVIEW_GAP);
+            let width=app.preview.tile_w;
+            let height=app.preview.tile_h;
+            let gap=app.preview.gap;
+            let x=PREVIEW_PAD+(col as i32)*(width+gap);
+            let y=PREVIEW_PAD+(row as i32)*(height+gap);
             let line=CreateSolidBrush(color(55,57,63));
-            let rect=RECT{left:x,top:y,right:x+PREVIEW_TILE_W,
-                          bottom:y+PREVIEW_TILE_H};
+            let rect=RECT{left:x,top:y,right:x+width,bottom:y+height};
             FrameRect(hdc,&rect,line);
             DeleteObject(line);
-            let title=wide(&item.title.chars().take(25).collect::<String>());
+            let title=wide(&item.title.chars().take((width/9).max(8) as usize)
+                         .collect::<String>());
             TextOutW(hdc,x+9,y+8,title.as_ptr(),title.len() as i32-1);
             let xmark=wide("×");
-            TextOutW(hdc,x+PREVIEW_TILE_W-22,y+8,xmark.as_ptr(),1);
+            TextOutW(hdc,x+width-22,y+8,xmark.as_ptr(),1);
         }
     });
     EndPaint(hwnd,&ps);
 }
-
+unsafe fn draw_start(hdc:HDC,x:i32,y:i32,size:i32){
+    // Vector four-pane logo: sharp at every size, not a bitmap upscale.
+    let brush=CreateSolidBrush(color(0,153,255));
+    let gap=(size/13).max(2);
+    let block=(size-gap)/2;
+    for row in 0..2{
+        for col in 0..2{
+            let left=x+col*(block+gap);
+            let top=y+row*(block+gap);
+            let rect=RECT{left,top,right:left+block,bottom:top+block};
+            FillRect(hdc,&rect,brush);
+        }
+    }
+    DeleteObject(brush);
+}
+unsafe fn draw_running_pips(hdc:HDC,x:i32,y:i32,size:i32,
+                             windows:usize,settings:&Settings){
+    if windows==0{return;}
+    let pip_w=settings.get("pip_width");
+    let pip_h=settings.get("pip_height");
+    let pip_gap=settings.get("pip_gap");
+    let bar_w=settings.get("pip_bar");
+    let py=y+size+settings.get("pip_y");
+    let brush=CreateSolidBrush(color(225,225,235));
+    if windows>=4{
+        let left=x+(size-bar_w)/2;
+        FillRect(hdc,&RECT{left,top:py,right:left+bar_w,bottom:py+pip_h},brush);
+    }else{
+        let n=windows as i32;
+        let total=pip_w*n+pip_gap*(n-1);
+        let first=x+(size-total)/2;
+        for i in 0..n{
+            let left=first+i*(pip_w+pip_gap);
+            FillRect(hdc,&RECT{left,top:py,right:left+pip_w,bottom:py+pip_h},brush);
+        }
+    }
+    DeleteObject(brush);
+}
 unsafe fn draw_dock(hwnd:HWND){
     let mut ps:PAINTSTRUCT=std::mem::zeroed();
     let hdc=BeginPaint(hwnd,&mut ps);
@@ -497,27 +537,19 @@ unsafe fn draw_dock(hwnd:HWND){
     DeleteObject(transparent);
     with_app(|app|{
         let xs=app.motion.positions(app.width as f32);
-        if app.groups.is_empty(){
-            let msg=wide("No running applications detected");
-            SetBkMode(hdc,TRANSPARENT as i32);
-            SetTextColor(hdc,color(230,230,230));
-            TextOutW(hdc,16,DOCK_HEIGHT-32,msg.as_ptr(),msg.len() as i32-1);
-        }
-        for (i,g) in app.groups.iter().enumerate(){
-            let size=app.motion.sizes[i].round() as i32;
-            let x=xs[i].round() as i32;
-            let y=DOCK_HEIGHT-BASE_HEIGHT+(BASE_HEIGHT-size)/2;
-            DrawIconEx(hdc,x,y,g.icon,size,size,0,null_mut(),DI_NORMAL);
-            let indicator=CreateSolidBrush(color(220,220,232));
-            let pip=RECT{left:x+size/2-2,top:(y+size+3).min(DOCK_HEIGHT-5),
-                         right:x+size/2+2,bottom:(y+size+6).min(DOCK_HEIGHT-2)};
-            FillRect(hdc,&pip,indicator);
-            DeleteObject(indicator);
-            if g.windows.len()>1 {
-                let num=wide(&g.windows.len().to_string());
-                SetTextColor(hdc,color(255,255,255));
-                SetBkMode(hdc,TRANSPARENT as i32);
-                TextOutW(hdc,x+size-3,y+size/2,num.as_ptr(),num.len() as i32-1);
+        for (index,size) in app.motion.sizes.iter().enumerate(){
+            if index>=xs.len(){break;}
+            let diameter=size.round() as i32;
+            let x=xs[index].round() as i32;
+            let y=app.height-BASE_HEIGHT+(BASE_HEIGHT-diameter)/2-
+                  app.settings.get("icon_y");
+            if index==0{
+                draw_start(hdc,x,y,diameter);
+            }else if let Some(group)=app.groups.get(index-1){
+                if !group.icon.is_null(){
+                    DrawIconEx(hdc,x,y,group.icon,diameter,diameter,0,null_mut(),DI_NORMAL);
+                }
+                draw_running_pips(hdc,x,y,diameter,group.windows.len(),&app.settings);
             }
         }
     });
@@ -535,10 +567,17 @@ unsafe extern "system" fn dock_proc(hwnd:HWND,msg:u32,w:WPARAM,l:LPARAM)->LRESUL
             });0
         }
         WM_RBUTTONUP=>{show_dock_menu(hwnd);0}
+        WM_LBUTTONDOWN=>{
+            let sx=(l as u16 as i16) as i32;
+            let sy=((l>>16) as u16 as i16) as i32;
+            SetCapture(hwnd);
+            with_app(|app|app.mouse_down(sx+app.dock_left,sy+app.dock_top));0
+        }
         WM_LBUTTONUP=>{
             let sx=(l as u16 as i16) as i32;
             let sy=((l>>16) as u16 as i16) as i32;
-            with_app(|app|app.click_dock(sx,sy+app.dock_top));0
+            ReleaseCapture();
+            with_app(|app|app.mouse_up(sx+app.dock_left,sy+app.dock_top));0
         }
         WM_DESTROY=>{PostQuitMessage(0);0}
         _=>DefWindowProcW(hwnd,msg,w,l)
