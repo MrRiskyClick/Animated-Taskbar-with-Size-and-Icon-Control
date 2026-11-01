@@ -1,55 +1,80 @@
-# ATB Native Rust Dock — v0.1 developer prototype
+# ATB Rust Dock v0.2 — Native Windows developer preview
 
-**Independent application; NOT a Windhawk DLL.** Windows 11 only. No installer,
-service, WebView, JavaScript runtime or separate Windows taskbar replacement.
-This is a standalone native Rust/Win32 executable, designed to coexist with
-the separate `ATB Hide Taskbar Buttons` Windhawk mod and the user's
-`SimplyTransparent` Taskbar Styler theme.
+A standalone Rust/Win32 dock built and tested in GitHub Actions. It does NOT
+replace, resize, alter the work-area reservation of, or inject into the
+Windows Explorer taskbar. Windows 11; no installer, WebView, Tauri, helper
+service, administrator access or explorer.exe restart.
 
-## v0.1 goal
+**Safety:** the discontinued v0.3.x Windhawk overhang experiment remains
+disabled. This standalone executable does not require it. Your working
+`ATB Hide Taskbar Buttons` mod and existing `SimplyTransparent` theme
+are not modified.
 
-- Display icons for currently open, user-visible windows, grouped by executable.
-- Spring-driven icon magnification that pushes neighbors apart instead of overlapping.
-- Native DWM *live* thumbnail previews in an app-owned top-level window.
-- Show a single thumbnail for one running window, or a grid for grouped windows.
-- Configurable hover and dismissal delays; moving into the preview panel
-  keeps it open. Click a thumbnail to activate its source window; X closes
-  that specific window by sending `WM_CLOSE` (not killing the process).
-- All preview registrations are released on close/rebuild/exit.
-- The dock touches **no** Explorer XAML, window region, work-area reservation,
-  `SHAppBarMessage(ABM_SETPOS)`, registry or Windhawk settings.
+## Features implemented
 
-This is an early native interaction prototype, **not** the final full dock.
-Pinned applications without open windows, Start/Task View replacements,
-custom icons/configuration UI, context menus, progress, multiple monitors,
-per-app grouping rules, fullscreen detection, and reliable DPI adaptation
-are tracked as follow-up work. Do NOT hide the native taskbar buttons until
-the Rust dock has been validated and can show your actual windows reliably.
+- **High-resolution native app icons:** request an icon resource at 256×256
+  from each executable; fall back to a large window-provided icon, class icon
+  or system icon. Actual quality still depends on the application's resources.
+- **Start button:** independently drawn crisp four-pane Windows logo at the
+  beginning of the icon row, invokes the Windows Start menu on click.
+- **Running apps:** read-only top-level window enumeration, grouping by
+  process executable, click to activate, grouped DWM live hover thumbnails.
+- **Order:** running applications can be reordered by dragging their dock
+  icons; the order is saved to per-user settings. This is NOT yet an automatic
+  replica of Explorer's **pinned** taskbar sequence, and pinned apps without
+  open windows are not yet included. An accurate read-only native taskbar
+  ordering/identity mapping is a separate milestone.
+- **Animated magnification:** spring-based neighbor push-out with independently
+  adjustable size, spacing, stiffness, damping and neighbor falloff.
+- **Pips:** one indicator for one window, 2 for two, 3 for three,
+  a long bar for four or more; width, height, offsets and spacing adjustable.
+- **Native settings popup:** right-click anywhere on an app icon, select
+  **Settings...** to open a separate native Win32 window. Five categories
+  contain **26 live numeric sliders**, all functional. Use arrow keys on a
+  focused slider for 1-unit adjustments. Every change saves automatically.
+- **DWM hover previews:** configurable opening/dismissal delays, preview tile
+  width/height, columns, spacing and distance from the dock; click to activate
+  and preview X to request that one window close.
+- **Native fullscreen guard:** dock hides when a foreground window occupies
+  the entire primary display. This remains a prototype for multi-monitor and
+  exclusive fullscreen games.
 
-## Developer commands (do not run until the user requests a build to test)
+## Settings panels
 
+| Panel | Sliders |
+| --- | --- |
+| Position & layout | Dock height, width %, horizontal offset, vertical offset, icon vertical position |
+| Icon appearance | Resting size, magnified size, gap, independent Start size, opacity |
+| Animation | Spring stiffness, damping, neighbor falloff, frame interval |
+| Running indicators | Pip width, height, vertical position, between-pip gap, 4+ window bar length |
+| DWM previews | Opening hover delay, dismissal delay, tile width/height, columns, tile gap, vertical distance |
+
+All settings are in `%LOCALAPPDATA%\ATBRustDock\settings.ini`, never in the
+registry or Explorer. The dock saves the selected manual application order
+in the same file. The original old two timing properties are migrated.
+
+## Build or run
+
+Download the developer EXE from the successful
+[GitHub Actions run](https://github.com/MrRiskyClick/Animated-Taskbar-with-Size-and-Icon-Control/actions/workflows/rust-dock-ci.yml)
+under `atb-rust-dock-windows-dev`. The EXE runs in user space.
+
+To compile from source:
 ```powershell
-cd rust-dock
-cargo test
-cargo build --release
-.\target\release\atb-rust-dock.exe --hover-delay-ms=450 --dismiss-delay-ms=250
+cargo test --manifest-path rust-dock/Cargo.toml
+cargo build --manifest-path rust-dock/Cargo.toml --release
 ```
 
-No Explorer restart needed. Closing this EXE destroys its own dock and
-preview windows; Windows Explorer's native taskbar remains untouched.
-The separate Windhawk hiding mod may leave application buttons hidden
-if it is still enabled, which can be manually toggled off.
+Close the dock via **right-click → Exit ATB Dock**, or close its console
+window. No Explorer restart. Keep native taskbar buttons visible for the
+first evaluation if you want a fallback.
 
-## Technical design
+## Still to implement
 
-The DWM registration destination is an owned `WS_POPUP` preview
-window (not Explorer's Shell_TrayWnd). Each top-level source window
-gets its own `DwmRegisterThumbnail` and `DwmUpdateThumbnailProperties`
-rectangle. A small central Win32 message loop drives mouse hover/dismissal
-timers and only animates the icon row while the spring is unsettled.
+Exact Windows taskbar pinned order and pinned-but-not-running applications,
+modern packaged-app icon resolution, shell-equivalent context menus and
+jump lists, native task view replacement, multi-monitor/DPI coverage,
+GPU Direct2D rendering and fully event-driven idle scheduling.
 
-Read-only window enumeration uses Win32; activation uses `SetForegroundWindow`
-and `ShowWindow(SW_RESTORE)`. DWM thumbnails aren't screenshots and
-update continuously while the previews are open.
-
-Reference: https://learn.microsoft.com/en-us/windows/win32/dwm/thumbnail-ovw
+**CI success is compiler/math testing, not proof of actual desktop rendering.**
+Only the user performs visual and interaction testing on their Windows PC.
