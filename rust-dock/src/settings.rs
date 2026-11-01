@@ -72,12 +72,16 @@ impl Settings {
     pub fn set_by_index(&mut self,index:usize,value:i32){
         if let Some(spec)=SPECS.get(index) {
             self.values[index]=value.clamp(spec.min,spec.max);
-            // Max size may never be smaller than the base.
+            // The hover maximum must fit both normal app icons and Start.
             let min_idx=SPECS.iter().position(|s|s.key=="base_size").unwrap();
+            let start_idx=SPECS.iter().position(|s|s.key=="start_size").unwrap();
             let max_idx=SPECS.iter().position(|s|s.key=="max_size").unwrap();
-            if self.values[max_idx]<self.values[min_idx] {
-                if index==max_idx {self.values[min_idx]=self.values[max_idx]}
-                else {self.values[max_idx]=self.values[min_idx]}
+            if index==max_idx {
+                self.values[min_idx]=self.values[min_idx].min(self.values[max_idx]);
+                self.values[start_idx]=self.values[start_idx].min(self.values[max_idx]);
+            } else {
+                self.values[max_idx]=self.values[max_idx]
+                    .max(self.values[min_idx]).max(self.values[start_idx]);
             }
         }
     }
@@ -143,6 +147,7 @@ mod tests {
         let y=Settings::parse(&x.serialize());
         assert_eq!(y.get("preview_hover"),2000);
         assert!(y.get("max_size")>=y.get("base_size"));
+        assert!(y.get("max_size")>=y.get("start_size"));
         assert_eq!(y.order[0],"c:\\other.exe");
     }
 }
