@@ -74,6 +74,23 @@ Close the dock via **right-click → Exit ATB Dock**, or close its console
 window. No Explorer restart. Keep native taskbar buttons visible for the
 first evaluation if you want a fallback.
 
+## Diagnosing exact taskbar order and icon identity (read-only)
+
+With your native taskbar app buttons **visible** (do not enable the hiding mod
+for this comparison), run from the repository checkout on Windows PowerShell 5.1:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\rust-dock\diagnostics\inspect-native-taskbar-readonly.ps1
+```
+
+The local output is `ATB-taskbar-inventory.json` on your Desktop. It includes
+read-only UI Automation button names, AutomationIds, screen coordinates and
+available pinned .lnk shortcut targets/icon locations. It never clicks buttons,
+reads/writes Windhawk registry configuration, changes the taskbar, manipulates
+pins or restarts Explorer. **Review the JSON before sharing:** it contains
+local application paths and window names. The data will guide a future safe
+identity/order resolver; this script does **not** make the Rust dock match yet.
+
 ## Still to implement / correctness boundaries
 
 - **Exact native icon assets and live taskbar ordering remain UNRESOLVED.**
