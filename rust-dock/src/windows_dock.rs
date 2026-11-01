@@ -3,7 +3,7 @@
 //! resized, clipped, moved, hidden, recolored, or injected into.
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::{null, null_mut};
 use std::time::Instant;
@@ -15,6 +15,9 @@ use windows_sys::Win32::System::Threading::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 use crate::state::{Hover, PreviewAction, SpringDock, Timing};
+use crate::settings::Settings;
+use crate::settings_ui;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 
 const DOCK_HEIGHT: i32=112;
 const BASE_HEIGHT: i32=42;
@@ -33,12 +36,19 @@ fn now_ms(start:Instant)->u64 {start.elapsed().as_millis().min(u64::MAX as u128)
 
 #[derive(Clone)]
 struct WindowItem { hwnd: HWND, title: String }
-#[derive(Clone)]
 struct Group {
     key:String,
     label:String,
     windows:Vec<WindowItem>,
-    icon:HICON, // borrowed handle, not destroyed
+    icon:HICON,
+    icon_owned:bool,
+}
+impl Drop for Group {
+    fn drop(&mut self) {
+        if self.icon_owned && !self.icon.is_null() {
+            unsafe { DestroyIcon(self.icon); }
+        }
+    }
 }
 
 fn window_title(hwnd:HWND)->String {
@@ -63,18 +73,38 @@ fn executable_identity(pid:u32)->Option<String> {
         }
     }
 }
-fn borrowed_icon(hwnd:HWND)->HICON {
-    unsafe{
-        let mut icon=SendMessageW(hwnd,WM_GETICON,ICON_SMALL2 as usize,0) as HICON;
-        if icon.is_null() {icon=SendMessageW(hwnd,WM_GETICON,ICON_SMALL as usize,0) as HICON;}
-        if icon.is_null() {icon=GetClassLongPtrW(hwnd,GCLP_HICONSM) as HICON;}
-        if icon.is_null() {icon=GetClassLongPtrW(hwnd,GCLP_HICON) as HICON;}
-        if icon.is_null() {icon=LoadIconW(null_mut(),32512usize as *const u16);}
-        icon
+fn best_icon(hwnd:HWND,key:&str)->(HICON,bool){
+    // Extract the largest resource from a native executable rather than
+    // stretching WM_GETICON's 16/32px icon to hover magnification size.
+    // Extracted handles are owned by us and freed on group removal.
+    unsafe {
+        if !key.starts_with("pid:") {
+            let mut icon:HICON=null_mut();
+            let resource=wide(key);
+            let found=PrivateExtractIconsW(resource.as_ptr(),0,256,256,
+                                            &mut icon,null_mut(),1,0);
+            if found==1 && !icon.is_null(){return (icon,true);}
+        }
+        // Fallback supports packaged apps/custom window-provided icons.
+        let mut result:usize=0;
+        for which in [ICON_BIG,ICON_SMALL2,ICON_SMALL] {
+            result=0;
+            let ok=SendMessageTimeoutW(hwnd,WM_GETICON,which as usize,0,
+                SMTO_ABORTIFHUNG,120,&mut result);
+            if ok!=0 && result!=0 {return (result as HICON,false);}
+        }
+        let mut icon=GetClassLongPtrW(hwnd,GCLP_HICON) as HICON;
+        if icon.is_null(){icon=GetClassLongPtrW(hwnd,GCLP_HICONSM) as HICON;}
+        if icon.is_null(){icon=LoadIconW(null_mut(),32512usize as *const u16);}
+        (icon,false)
     }
 }
 fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND)->Vec<Group>{
-    struct Scan {own:[HWND;2],groups:BTreeMap<String,Group>}
+    struct Scan{
+        own:[HWND;2],
+        groups:Vec<Group>,
+        positions:HashMap<String,usize>
+    }
     unsafe extern "system" fn each(hwnd:HWND,lp:isize)->i32 {
         let scan=&mut *(lp as *mut Scan);
         if scan.own.contains(&hwnd) || IsWindowVisible(hwnd)==0 {return 1;}
@@ -84,25 +114,35 @@ fn scan_groups(dock_hwnd:HWND,preview_hwnd:HWND)->Vec<Group>{
         let mut cloaked:u32=0;
         if DwmGetWindowAttribute(hwnd,DWMWA_CLOAKED as u32,
             &mut cloaked as *mut _ as *mut c_void,
-            std::mem::size_of::<u32>() as u32)>=0 && cloaked!=0 {return 1;}
-        let name=window_title(hwnd);
-        if name.trim().is_empty(){return 1;}
+            std::mem::size_of::<u32>() as u32)>=0 && cloaked!=0{return 1;}
+        let title=window_title(hwnd);
+        if title.trim().is_empty(){return 1;}
         let mut pid:u32=0;
         GetWindowThreadProcessId(hwnd,&mut pid);
         if pid==0 || pid==GetCurrentProcessId(){return 1;}
         let key=executable_identity(pid).unwrap_or_else(||format!("pid:{pid}"));
-        let label=key.rsplit(['\\','/']).next().unwrap_or(&name).to_string();
-        let entry=scan.groups.entry(key.clone()).or_insert_with(||Group{
-            key,label,windows:Vec::new(),icon:borrowed_icon(hwnd)
-        });
-        if entry.windows.len()<MAX_WINDOWS_PER_GROUP {
-            entry.windows.push(WindowItem{hwnd,title:name});
+        let index=match scan.positions.get(&key).copied(){
+            Some(existing)=>existing,
+            None=>{
+                let label=key.rsplit(['\\','/']).next().unwrap_or(&title).to_string();
+                let index=scan.groups.len();
+                scan.groups.push(Group{
+                    key:key.clone(),label,windows:Vec::new(),
+                    icon:null_mut(),icon_owned:false
+                });
+                scan.positions.insert(key,index);
+                index
+            }
+        };
+        if scan.groups[index].windows.len()<MAX_WINDOWS_PER_GROUP {
+            scan.groups[index].windows.push(WindowItem{hwnd,title});
         }
         1
     }
-    let mut scan=Scan{own:[dock_hwnd,preview_hwnd],groups:BTreeMap::new()};
+    let mut scan=Scan{own:[dock_hwnd,preview_hwnd],
+                      groups:Vec::new(),positions:HashMap::new()};
     unsafe {EnumWindows(Some(each),&mut scan as *mut _ as isize);}
-    scan.groups.into_values().collect()
+    scan.groups
 }
 
 struct Thumb { id:isize,source:HWND }
