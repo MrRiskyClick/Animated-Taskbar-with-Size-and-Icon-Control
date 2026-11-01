@@ -9,8 +9,7 @@ pub fn native_rank(key:&str,label:&str,native:&[String])->Option<usize>{
     let exe=key.rsplit(['\\','/']).next().unwrap_or(key)
         .trim_end_matches(".exe").trim_end_matches(".EXE");
     let stem=normalized(exe);
-    if stem.len()<3{return None;}
-    // A few executable-to-taskbar-display name mappings, all read-only.
+    let shortcut=normalized(label.trim_end_matches(".lnk").trim_end_matches(".exe"));
     let alias=match stem.as_str(){
         "msedge"=>"microsoftedge",
         "explorer"=>"fileexplorer",
@@ -20,13 +19,19 @@ pub fn native_rank(key:&str,label:&str,native:&[String])->Option<usize>{
         "devenv"=>"visualstudio",
         _=>""
     };
-    let title=normalized(label.trim_end_matches(".exe"));
-    native.iter().position(|caption|{
+    // Favor the actual pinned shortcut display name (not only the EXE).
+    // UIA names can have suffixes such as " - 2 windows".
+    let mut choices=Vec::new();
+    for (i,caption) in native.iter().enumerate(){
         let name=normalized(caption);
-        (!alias.is_empty() && name.contains(alias)) ||
-        (stem.len()>=4 && name.contains(&stem)) ||
-        (title.len()>=5 && name.contains(&title))
-    })
+        let matches=(shortcut.len()>=4 && (name==shortcut || name.starts_with(&shortcut))) ||
+            (!alias.is_empty() && (name==alias||name.starts_with(alias))) ||
+            (stem.len()>=4 && (name==stem||name.starts_with(&stem)));
+        if matches {choices.push(i);}
+    }
+    // If multiple button names match, their identity is uncertain. Never
+    // invent an order by taking the first generic text child.
+    if choices.len()==1 {Some(choices[0])} else {None}
 }
 #[cfg(test)]
 mod tests{
